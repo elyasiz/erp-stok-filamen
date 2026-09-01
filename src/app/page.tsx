@@ -36,7 +36,7 @@ const navigation: Array<{ label: string; items: Array<{ label: string; icon: Luc
     label: "Utama",
     items: [
       { label: "Dashboard", icon: LayoutDashboard, view: "dashboard" },
-      { label: "Stok filamen", icon: Boxes, view: "inventory", count: "167" },
+      { label: "Stok filamen", icon: Boxes, view: "inventory" },
     ],
   },
   {

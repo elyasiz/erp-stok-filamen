@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertCircle,
   ArrowUpRight,
   Barcode,
   Check,
@@ -9,24 +10,28 @@ import {
   CircleDollarSign,
   ClipboardCheck,
   Download,
+  Eye,
   FileSpreadsheet,
   Filter,
   History,
+  LoaderCircle,
   PackageCheck,
+  PackageOpen,
   PackagePlus,
+  Pencil,
   Plus,
   Printer,
   ReceiptText,
-  RotateCcw,
   ScanBarcode,
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Trash2,
   Users,
   Weight,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export type ViewId =
   | "dashboard"
@@ -40,7 +45,7 @@ export type ViewId =
   | "users"
   | "settings";
 
-const units = [
+const demoUnits = [
   { code: "FLM-2609-0018", product: "Bambu Lab PLA Basic", material: "PLA", color: "Jade White", pack: "With Spool", grams: 1000, status: "Tersedia", cost: "Rp189.000", supplier: "PT Kreasi 3D" },
   { code: "FLM-2608-0148", product: "Bambu Lab PLA Basic", material: "PLA", color: "Matte Black", pack: "Refill", grams: 812, status: "Digunakan", cost: "Rp172.500", supplier: "PT Kreasi 3D" },
   { code: "FLM-2608-0142", product: "Bambu Lab PLA Basic", material: "PLA", color: "Matte Black", pack: "With Spool", grams: 148, status: "Hampir Habis", cost: "Rp188.000", supplier: "PT Kreasi 3D" },
@@ -81,41 +86,242 @@ function Toast({ text, onClose }: { text: string; onClose: () => void }) {
   return <div className="app-toast" role="status"><CheckCircle2 size={18} /><span>{text}</span><button onClick={onClose} aria-label="Tutup pemberitahuan"><X size={16} /></button></div>;
 }
 
+type InventoryStatusCode = "AVAILABLE" | "IN_USE" | "LOW_STOCK" | "EMPTY" | "DAMAGED" | "INACTIVE";
+type PackagingCode = "WITH_SPOOL" | "REFILL";
+
+type InventoryItem = {
+  id: string;
+  code: string;
+  product: string;
+  material: string;
+  color: string;
+  packagingType: PackagingCode;
+  remainingGrams: number;
+  status: InventoryStatusCode;
+  unitCost: number;
+  supplier: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type InventoryFormData = Omit<InventoryItem, "id" | "createdAt" | "updatedAt">;
+
+const inventoryStatusLabels: Record<InventoryStatusCode, string> = {
+  AVAILABLE: "Tersedia",
+  IN_USE: "Digunakan",
+  LOW_STOCK: "Hampir Habis",
+  EMPTY: "Habis",
+  DAMAGED: "Rusak",
+  INACTIVE: "Nonaktif",
+};
+
+const emptyInventoryForm: InventoryFormData = {
+  code: "",
+  product: "",
+  material: "PLA",
+  color: "",
+  packagingType: "WITH_SPOOL",
+  remainingGrams: 1000,
+  status: "AVAILABLE",
+  unitCost: 0,
+  supplier: "",
+};
+
+const rupiah = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
+
+function InventoryDialog({ children, title, eyebrow, onClose }: { children: React.ReactNode; title: string; eyebrow: string; onClose: () => void }) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div className="dialog-layer" role="presentation" onMouseDown={(event) => event.currentTarget === event.target && onClose()}>
+      <section className="inventory-dialog" role="dialog" aria-modal="true" aria-labelledby="inventory-dialog-title">
+        <div className="dialog-head">
+          <div><span className="eyebrow">{eyebrow}</span><h2 id="inventory-dialog-title">{title}</h2></div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Tutup dialog"><X size={18} /></button>
+        </div>
+        {children}
+      </section>
+    </div>
+  );
+}
+
+function InventoryForm({ value, saving, error, onChange, onCancel, onSubmit }: {
+  value: InventoryFormData;
+  saving: boolean;
+  error: string;
+  onChange: (value: InventoryFormData) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
+      <div className="form-grid inventory-form-grid">
+        <label><span>Kode unit *</span><input autoFocus required maxLength={40} value={value.code} onChange={(event) => onChange({ ...value, code: event.target.value.toUpperCase() })} placeholder="FLM-2026-0001" /></label>
+        <label><span>Nama produk *</span><input required maxLength={120} value={value.product} onChange={(event) => onChange({ ...value, product: event.target.value })} placeholder="Contoh: PLA Basic" /></label>
+        <label><span>Material *</span><input required maxLength={30} value={value.material} onChange={(event) => onChange({ ...value, material: event.target.value.toUpperCase() })} placeholder="PLA" /></label>
+        <label><span>Warna *</span><input required maxLength={60} value={value.color} onChange={(event) => onChange({ ...value, color: event.target.value })} placeholder="Matte Black" /></label>
+        <label><span>Kemasan *</span><select value={value.packagingType} onChange={(event) => onChange({ ...value, packagingType: event.target.value as PackagingCode })}><option value="WITH_SPOOL">With Spool</option><option value="REFILL">Refill</option></select></label>
+        <label><span>Sisa gram *</span><input required type="number" min="0" max="100000" step="0.01" value={value.remainingGrams} onChange={(event) => onChange({ ...value, remainingGrams: Number(event.target.value) })} /></label>
+        <label><span>Status *</span><select value={value.status} onChange={(event) => onChange({ ...value, status: event.target.value as InventoryStatusCode })}>{Object.entries(inventoryStatusLabels).map(([status, label]) => <option value={status} key={status}>{label}</option>)}</select></label>
+        <label><span>Harga unit *</span><input required type="number" min="0" step="1" value={value.unitCost} onChange={(event) => onChange({ ...value, unitCost: Number(event.target.value) })} /></label>
+        <label className="full-field"><span>Supplier *</span><input required maxLength={120} value={value.supplier} onChange={(event) => onChange({ ...value, supplier: event.target.value })} placeholder="Nama supplier" /></label>
+      </div>
+      {error ? <div className="inventory-form-error" role="alert"><AlertCircle size={16} />{error}</div> : null}
+      <div className="dialog-actions"><button className="button secondary" type="button" onClick={onCancel} disabled={saving}>Batal</button><button className="button primary" type="submit" disabled={saving}>{saving ? <><LoaderCircle className="spin" size={16} /> Menyimpan...</> : <><Check size={16} /> Simpan data</>}</button></div>
+    </form>
+  );
+}
+
+async function fetchInventoryItems(): Promise<InventoryItem[]> {
+  const response = await fetch("/api/v1/inventory", { cache: "no-store" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message ?? "Gagal memuat stok filamen.");
+  return data.items ?? [];
+}
+
 function InventoryView() {
+  const [items, setItems] = useState<InventoryItem[]>([]);
   const [query, setQuery] = useState("");
+  const [material, setMaterial] = useState("ALL");
+  const [status, setStatus] = useState("ALL");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
-  const filtered = useMemo(() => units.filter((unit) => `${unit.code} ${unit.product} ${unit.color}`.toLowerCase().includes(query.toLowerCase())), [query]);
+  const [mode, setMode] = useState<"create" | "edit" | "view" | "delete" | null>(null);
+  const [selected, setSelected] = useState<InventoryItem | null>(null);
+  const [form, setForm] = useState<InventoryFormData>(emptyInventoryForm);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+
+  const loadItems = async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      setItems(await fetchInventoryItems());
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Gagal memuat stok filamen.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    fetchInventoryItems()
+      .then((nextItems) => { if (active) setItems(nextItems); })
+      .catch((error: unknown) => { if (active) setLoadError(error instanceof Error ? error.message : "Gagal memuat stok filamen."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  const materials = useMemo(() => Array.from(new Set(items.map((item) => item.material))).sort(), [items]);
+  const filtered = useMemo(() => items.filter((item) => {
+    const matchesQuery = `${item.code} ${item.product} ${item.color} ${item.supplier}`.toLowerCase().includes(query.toLowerCase());
+    return matchesQuery && (material === "ALL" || item.material === material) && (status === "ALL" || item.status === status);
+  }), [items, material, query, status]);
+
+  const totalGrams = items.reduce((sum, item) => sum + item.remainingGrams, 0);
+  const available = items.filter((item) => item.status === "AVAILABLE").length;
+  const inUse = items.filter((item) => item.status === "IN_USE").length;
+  const lowStock = items.filter((item) => item.remainingGrams > 0 && item.remainingGrams < 500).length;
+
+  const closeDialog = () => { setMode(null); setSelected(null); setFormError(""); };
+  const openCreate = () => { setForm(emptyInventoryForm); setSelected(null); setFormError(""); setMode("create"); };
+  const openEdit = (item: InventoryItem) => {
+    setSelected(item);
+    setForm({ code: item.code, product: item.product, material: item.material, color: item.color, packagingType: item.packagingType, remainingGrams: item.remainingGrams, status: item.status, unitCost: item.unitCost, supplier: item.supplier });
+    setFormError("");
+    setMode("edit");
+  };
+
+  const saveItem = async () => {
+    setSaving(true);
+    setFormError("");
+    try {
+      const editing = mode === "edit" && selected;
+      const response = await fetch(editing ? `/api/v1/inventory/${selected.id}` : "/api/v1/inventory", {
+        method: editing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? "Data gagal disimpan.");
+      closeDialog();
+      setToast(editing ? `${form.code} berhasil diperbarui.` : `${form.code} berhasil ditambahkan.`);
+      await loadItems();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Data gagal disimpan.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteItem = async () => {
+    if (!selected) return;
+    setSaving(true);
+    setFormError("");
+    try {
+      const response = await fetch(`/api/v1/inventory/${selected.id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? "Data gagal dihapus.");
+      const code = selected.code;
+      closeDialog();
+      setToast(`${code} berhasil dihapus.`);
+      await loadItems();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Data gagal dihapus.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <>
-      <ModuleHeading eyebrow="INVENTORY" title="Stok filamen" description="Pantau setiap spool dan refill hingga gram terakhir.">
-        <button className="button secondary" onClick={() => setToast("Form koreksi stok dibuka untuk Admin Inventory.")}><RotateCcw size={17} /> Koreksi stok</button>
-        <button className="button primary" onClick={() => setToast("Form produk baru siap diisi.")}><Plus size={17} /> Tambah produk</button>
+      <ModuleHeading eyebrow="INVENTORY" title="Stok filamen" description="Kelola setiap spool dan refill hingga gram terakhir.">
+        <button className="button secondary" onClick={() => void loadItems()} disabled={loading}><LoaderCircle className={loading ? "spin" : ""} size={17} /> Muat ulang</button>
+        <button className="button primary" onClick={openCreate}><Plus size={17} /> Tambah filamen</button>
       </ModuleHeading>
       <section className="module-stats compact-stats">
-        <article><span>Total unit</span><strong>167</strong><small>128,4 kg tersisa</small></article>
-        <article><span>Tersedia</span><strong>155</strong><small>93% dari total</small></article>
-        <article><span>Digunakan</span><strong>12</strong><small>oleh 8 operator</small></article>
-        <article><span>Hampir habis</span><strong className="warning-copy">9</strong><small>di bawah 500 gram</small></article>
+        <article><span>Total unit</span><strong>{items.length}</strong><small>{(totalGrams / 1000).toLocaleString("id-ID", { maximumFractionDigits: 2 })} kg tersisa</small></article>
+        <article><span>Tersedia</span><strong>{available}</strong><small>{items.length ? Math.round((available / items.length) * 100) : 0}% dari total</small></article>
+        <article><span>Digunakan</span><strong>{inUse}</strong><small>unit berstatus digunakan</small></article>
+        <article><span>Hampir habis</span><strong className="warning-copy">{lowStock}</strong><small>di bawah 500 gram</small></article>
       </section>
       <section className="data-panel">
-        <div className="toolbar">
-          <label className="table-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari barcode, produk, warna..." /></label>
-          <div className="toolbar-actions"><button><Filter size={16} /> Material</button><button><SlidersHorizontal size={16} /> Semua status</button></div>
+        <div className="toolbar inventory-toolbar">
+          <label className="table-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari kode, produk, warna, supplier..." /></label>
+          <div className="toolbar-actions">
+            <label className="toolbar-select"><Filter size={15} /><select aria-label="Filter material" value={material} onChange={(event) => setMaterial(event.target.value)}><option value="ALL">Semua material</option>{materials.map((item) => <option value={item} key={item}>{item}</option>)}</select></label>
+            <label className="toolbar-select"><SlidersHorizontal size={15} /><select aria-label="Filter status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="ALL">Semua status</option>{Object.entries(inventoryStatusLabels).map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></label>
+          </div>
         </div>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead><tr><th>Unit filamen</th><th>Material / Kemasan</th><th>Sisa</th><th>Status</th><th>Harga unit</th><th>Supplier</th><th aria-label="Aksi" /></tr></thead>
-            <tbody>{filtered.map((unit) => <tr key={unit.code}>
-              <td><div className="product-cell"><span className="product-token"><Barcode size={17} /></span><span><strong>{unit.product}</strong><small>{unit.code} · {unit.color}</small></span></div></td>
-              <td><strong className="cell-main">{unit.material}</strong><small className="cell-sub">{unit.pack}</small></td>
-              <td><div className="weight-cell"><strong>{unit.grams.toLocaleString("id-ID")} g</strong><div><i style={{ width: `${unit.grams / 10}%` }} /></div></div></td>
-              <td><Status>{unit.status}</Status></td><td>{unit.cost}</td><td>{unit.supplier}</td>
-              <td><button className="table-action" onClick={() => setToast(`Detail ${unit.code} dibuka.`)}><ChevronRight size={17} /></button></td>
-            </tr>)}</tbody>
+        {loadError ? <div className="inventory-load-error"><AlertCircle size={21} /><div><strong>Stok belum dapat dimuat</strong><span>{loadError}</span></div><button className="button secondary" onClick={() => void loadItems()}>Coba lagi</button></div> : null}
+        {!loadError ? <div className="table-wrap">
+          <table className="data-table inventory-table">
+            <thead><tr><th>Unit filamen</th><th>Material / Kemasan</th><th>Sisa</th><th>Status</th><th>Harga unit</th><th>Supplier</th><th>Aksi</th></tr></thead>
+            <tbody>
+              {loading ? <tr><td colSpan={7}><div className="inventory-empty"><LoaderCircle className="spin" size={28} /><strong>Memuat stok...</strong></div></td></tr> : null}
+              {!loading && !filtered.length ? <tr><td colSpan={7}><div className="inventory-empty"><span><PackageOpen size={30} /></span><strong>{items.length ? "Tidak ada hasil yang cocok" : "Belum ada data stok filamen"}</strong><p>{items.length ? "Ubah kata pencarian atau filter." : "Tambahkan unit filamen pertama untuk memulai inventory."}</p>{!items.length ? <button className="button primary" onClick={openCreate}><Plus size={16} /> Tambah filamen pertama</button> : null}</div></td></tr> : null}
+              {!loading && filtered.map((item) => <tr key={item.id}>
+                <td><div className="product-cell"><span className="product-token"><Barcode size={17} /></span><span><strong>{item.product}</strong><small>{item.code} · {item.color}</small></span></div></td>
+                <td><strong className="cell-main">{item.material}</strong><small className="cell-sub">{item.packagingType === "WITH_SPOOL" ? "With Spool" : "Refill"}</small></td>
+                <td><div className="weight-cell"><strong>{item.remainingGrams.toLocaleString("id-ID")} g</strong><div><i style={{ width: `${Math.min(100, item.remainingGrams / 10)}%` }} /></div></div></td>
+                <td><Status>{inventoryStatusLabels[item.status]}</Status></td><td>{rupiah.format(item.unitCost)}</td><td>{item.supplier}</td>
+                <td><div className="row-actions"><button className="table-action" onClick={() => { setSelected(item); setMode("view"); }} aria-label={`Lihat ${item.code}`} title="Lihat"><Eye size={15} /></button><button className="table-action" onClick={() => openEdit(item)} aria-label={`Ubah ${item.code}`} title="Ubah"><Pencil size={15} /></button><button className="table-action danger" onClick={() => { setSelected(item); setFormError(""); setMode("delete"); }} aria-label={`Hapus ${item.code}`} title="Hapus"><Trash2 size={15} /></button></div></td>
+              </tr>)}
+            </tbody>
           </table>
-        </div>
-        <div className="table-footer"><span>Menampilkan {filtered.length} dari 167 unit</span><div><button disabled>←</button><button className="current">1</button><button>2</button><button>3</button><button>→</button></div></div>
+        </div> : null}
+        {!loadError ? <div className="table-footer"><span>Menampilkan {filtered.length} dari {items.length} unit</span><span>Data tersimpan di database</span></div> : null}
       </section>
+
+      {mode === "create" || mode === "edit" ? <InventoryDialog eyebrow={mode === "create" ? "UNIT BARU" : "PERBARUI UNIT"} title={mode === "create" ? "Tambah stok filamen" : `Ubah ${selected?.code ?? "filamen"}`} onClose={closeDialog}><InventoryForm value={form} saving={saving} error={formError} onChange={setForm} onCancel={closeDialog} onSubmit={() => void saveItem()} /></InventoryDialog> : null}
+      {mode === "view" && selected ? <InventoryDialog eyebrow="DETAIL UNIT" title={selected.code} onClose={closeDialog}><div className="inventory-detail"><div className="detail-hero"><span className="product-token"><Barcode size={22} /></span><div><strong>{selected.product}</strong><small>{selected.material} · {selected.color}</small></div><Status>{inventoryStatusLabels[selected.status]}</Status></div><dl><div><dt>Kemasan</dt><dd>{selected.packagingType === "WITH_SPOOL" ? "With Spool" : "Refill"}</dd></div><div><dt>Sisa stok</dt><dd>{selected.remainingGrams.toLocaleString("id-ID")} gram</dd></div><div><dt>Harga unit</dt><dd>{rupiah.format(selected.unitCost)}</dd></div><div><dt>Supplier</dt><dd>{selected.supplier}</dd></div><div><dt>Terakhir diubah</dt><dd>{new Date(selected.updatedAt).toLocaleString("id-ID")}</dd></div></dl></div><div className="dialog-actions"><button className="button secondary danger-button" onClick={() => setMode("delete")}><Trash2 size={16} /> Hapus</button><button className="button primary" onClick={() => openEdit(selected)}><Pencil size={16} /> Ubah data</button></div></InventoryDialog> : null}
+      {mode === "delete" && selected ? <InventoryDialog eyebrow="KONFIRMASI" title={`Hapus ${selected.code}?`} onClose={closeDialog}><div className="delete-copy"><span><Trash2 size={22} /></span><div><strong>Data akan dihapus permanen.</strong><p>Unit {selected.product} tidak akan tampil lagi di stok filamen.</p></div></div>{formError ? <div className="inventory-form-error" role="alert"><AlertCircle size={16} />{formError}</div> : null}<div className="dialog-actions"><button className="button secondary" onClick={closeDialog} disabled={saving}>Batal</button><button className="button danger-button solid" onClick={() => void deleteItem()} disabled={saving}>{saving ? <><LoaderCircle className="spin" size={16} /> Menghapus...</> : <><Trash2 size={16} /> Hapus permanen</>}</button></div></InventoryDialog> : null}
       {toast ? <Toast text={toast} onClose={() => setToast("")} /> : null}
     </>
   );
@@ -165,11 +371,11 @@ function ReceiptView() {
 
 function UsageStartView() {
   const [usageType, setUsageType] = useState<"CLASS" | "NON_CLASS">("CLASS");
-  const [scanned, setScanned] = useState([units[0]]);
+  const [scanned, setScanned] = useState([demoUnits[0]]);
   const [code, setCode] = useState("");
   const [toast, setToast] = useState("");
   const addUnit = () => {
-    const next = units.find((unit) => unit.code.toLowerCase() === code.trim().toLowerCase()) ?? units[5];
+    const next = demoUnits.find((unit) => unit.code.toLowerCase() === code.trim().toLowerCase()) ?? demoUnits[5];
     if (!scanned.some((unit) => unit.code === next.code)) setScanned([...scanned, next]);
     setCode("");
   };
