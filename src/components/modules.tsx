@@ -31,7 +31,8 @@ import {
   Weight,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import JsBarcode from "jsbarcode";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export type ViewId =
   | "dashboard"
@@ -183,6 +184,48 @@ async function fetchInventoryItems(): Promise<InventoryItem[]> {
   return data.items ?? [];
 }
 
+function BarcodeGraphic({ value }: { value: string }) {
+  const barcodeRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    if (!barcodeRef.current) return;
+    JsBarcode(barcodeRef.current, value, {
+      format: "CODE128",
+      background: "#ffffff",
+      lineColor: "#111111",
+      width: 2,
+      height: 72,
+      margin: 0,
+      displayValue: true,
+      font: "monospace",
+      fontSize: 17,
+      fontOptions: "bold",
+      textMargin: 5,
+    });
+  }, [value]);
+
+  return <svg ref={barcodeRef} className="barcode-graphic" role="img" aria-label={`Barcode Code 128 ${value}`} />;
+}
+
+function PrintableBarcodeLabel({ item }: { item: InventoryItem }) {
+  return (
+    <div className="barcode-print-area">
+      <article className="barcode-label">
+        <div className="barcode-label-head">
+          <div className="barcode-brand"><span>T</span><div><strong>TIDIGO</strong><small>FROM IDEAS TO 3D OBJECTS</small></div></div>
+          <span>STOK FILAMEN</span>
+        </div>
+        <div className="barcode-product">
+          <strong>{item.product}</strong>
+          <span>{item.material} · {item.color} · {item.packagingType === "WITH_SPOOL" ? "With Spool" : "Refill"}</span>
+        </div>
+        <div className="barcode-visual"><BarcodeGraphic value={item.code} /></div>
+        <div className="barcode-label-foot"><span>Sisa: {item.remainingGrams.toLocaleString("id-ID")} g</span><span>TIDIGO ERP</span></div>
+      </article>
+    </div>
+  );
+}
+
 function InventoryView() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [query, setQuery] = useState("");
@@ -191,7 +234,7 @@ function InventoryView() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
-  const [mode, setMode] = useState<"create" | "edit" | "view" | "delete" | null>(null);
+  const [mode, setMode] = useState<"create" | "edit" | "view" | "label" | "delete" | null>(null);
   const [selected, setSelected] = useState<InventoryItem | null>(null);
   const [form, setForm] = useState<InventoryFormData>(emptyInventoryForm);
   const [saving, setSaving] = useState(false);
@@ -237,6 +280,7 @@ function InventoryView() {
     setFormError("");
     setMode("edit");
   };
+  const openLabel = (item: InventoryItem) => { setSelected(item); setFormError(""); setMode("label"); };
 
   const saveItem = async () => {
     setSaving(true);
@@ -250,8 +294,16 @@ function InventoryView() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message ?? "Data gagal disimpan.");
-      closeDialog();
-      setToast(editing ? `${form.code} berhasil diperbarui.` : `${form.code} berhasil ditambahkan.`);
+      if (editing) {
+        closeDialog();
+        setToast(`${form.code} berhasil diperbarui.`);
+      } else {
+        const createdItem = data.item as InventoryItem;
+        setSelected(createdItem);
+        setFormError("");
+        setMode("label");
+        setToast(`${createdItem.code} berhasil ditambahkan. Label siap dicetak.`);
+      }
       await loadItems();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Data gagal disimpan.");
@@ -311,7 +363,7 @@ function InventoryView() {
                 <td><strong className="cell-main">{item.material}</strong><small className="cell-sub">{item.packagingType === "WITH_SPOOL" ? "With Spool" : "Refill"}</small></td>
                 <td><div className="weight-cell"><strong>{item.remainingGrams.toLocaleString("id-ID")} g</strong><div><i style={{ width: `${Math.min(100, item.remainingGrams / 10)}%` }} /></div></div></td>
                 <td><Status>{inventoryStatusLabels[item.status]}</Status></td><td>{rupiah.format(item.unitCost)}</td><td>{item.supplier}</td>
-                <td><div className="row-actions"><button className="table-action" onClick={() => { setSelected(item); setMode("view"); }} aria-label={`Lihat ${item.code}`} title="Lihat"><Eye size={15} /></button><button className="table-action" onClick={() => openEdit(item)} aria-label={`Ubah ${item.code}`} title="Ubah"><Pencil size={15} /></button><button className="table-action danger" onClick={() => { setSelected(item); setFormError(""); setMode("delete"); }} aria-label={`Hapus ${item.code}`} title="Hapus"><Trash2 size={15} /></button></div></td>
+                <td><div className="row-actions"><button className="table-action" onClick={() => { setSelected(item); setMode("view"); }} aria-label={`Lihat ${item.code}`} title="Lihat"><Eye size={15} /></button><button className="table-action" onClick={() => openLabel(item)} aria-label={`Cetak label ${item.code}`} title="Cetak label"><Printer size={15} /></button><button className="table-action" onClick={() => openEdit(item)} aria-label={`Ubah ${item.code}`} title="Ubah"><Pencil size={15} /></button><button className="table-action danger" onClick={() => { setSelected(item); setFormError(""); setMode("delete"); }} aria-label={`Hapus ${item.code}`} title="Hapus"><Trash2 size={15} /></button></div></td>
               </tr>)}
             </tbody>
           </table>
@@ -320,7 +372,8 @@ function InventoryView() {
       </section>
 
       {mode === "create" || mode === "edit" ? <InventoryDialog eyebrow={mode === "create" ? "UNIT BARU" : "PERBARUI UNIT"} title={mode === "create" ? "Tambah stok filamen" : `Ubah ${selected?.code ?? "filamen"}`} onClose={closeDialog}><InventoryForm value={form} saving={saving} error={formError} onChange={setForm} onCancel={closeDialog} onSubmit={() => void saveItem()} /></InventoryDialog> : null}
-      {mode === "view" && selected ? <InventoryDialog eyebrow="DETAIL UNIT" title={selected.code} onClose={closeDialog}><div className="inventory-detail"><div className="detail-hero"><span className="product-token"><Barcode size={22} /></span><div><strong>{selected.product}</strong><small>{selected.material} · {selected.color}</small></div><Status>{inventoryStatusLabels[selected.status]}</Status></div><dl><div><dt>Kemasan</dt><dd>{selected.packagingType === "WITH_SPOOL" ? "With Spool" : "Refill"}</dd></div><div><dt>Sisa stok</dt><dd>{selected.remainingGrams.toLocaleString("id-ID")} gram</dd></div><div><dt>Harga unit</dt><dd>{rupiah.format(selected.unitCost)}</dd></div><div><dt>Supplier</dt><dd>{selected.supplier}</dd></div><div><dt>Terakhir diubah</dt><dd>{new Date(selected.updatedAt).toLocaleString("id-ID")}</dd></div></dl></div><div className="dialog-actions"><button className="button secondary danger-button" onClick={() => setMode("delete")}><Trash2 size={16} /> Hapus</button><button className="button primary" onClick={() => openEdit(selected)}><Pencil size={16} /> Ubah data</button></div></InventoryDialog> : null}
+      {mode === "view" && selected ? <InventoryDialog eyebrow="DETAIL UNIT" title={selected.code} onClose={closeDialog}><div className="inventory-detail"><div className="detail-hero"><span className="product-token"><Barcode size={22} /></span><div><strong>{selected.product}</strong><small>{selected.material} · {selected.color}</small></div><Status>{inventoryStatusLabels[selected.status]}</Status></div><dl><div><dt>Kemasan</dt><dd>{selected.packagingType === "WITH_SPOOL" ? "With Spool" : "Refill"}</dd></div><div><dt>Sisa stok</dt><dd>{selected.remainingGrams.toLocaleString("id-ID")} gram</dd></div><div><dt>Harga unit</dt><dd>{rupiah.format(selected.unitCost)}</dd></div><div><dt>Supplier</dt><dd>{selected.supplier}</dd></div><div><dt>Terakhir diubah</dt><dd>{new Date(selected.updatedAt).toLocaleString("id-ID")}</dd></div></dl></div><div className="dialog-actions"><button className="button secondary danger-button" onClick={() => setMode("delete")}><Trash2 size={16} /> Hapus</button><button className="button secondary" onClick={() => openLabel(selected)}><Printer size={16} /> Cetak label</button><button className="button primary" onClick={() => openEdit(selected)}><Pencil size={16} /> Ubah data</button></div></InventoryDialog> : null}
+      {mode === "label" && selected ? <InventoryDialog eyebrow="LABEL SIAP CETAK" title={selected.code} onClose={closeDialog}><div className="label-ready-note"><CheckCircle2 size={18} /><div><strong>Barcode Code 128 sudah dibuat.</strong><span>Gunakan kertas label 100 × 50 mm, lalu pilih skala 100% pada pengaturan printer.</span></div></div><PrintableBarcodeLabel item={selected} /><div className="dialog-actions"><button className="button secondary" onClick={closeDialog}>Selesai</button><button className="button primary" onClick={() => window.print()}><Printer size={16} /> Cetak label</button></div></InventoryDialog> : null}
       {mode === "delete" && selected ? <InventoryDialog eyebrow="KONFIRMASI" title={`Hapus ${selected.code}?`} onClose={closeDialog}><div className="delete-copy"><span><Trash2 size={22} /></span><div><strong>Data akan dihapus permanen.</strong><p>Unit {selected.product} tidak akan tampil lagi di stok filamen.</p></div></div>{formError ? <div className="inventory-form-error" role="alert"><AlertCircle size={16} />{formError}</div> : null}<div className="dialog-actions"><button className="button secondary" onClick={closeDialog} disabled={saving}>Batal</button><button className="button danger-button solid" onClick={() => void deleteItem()} disabled={saving}>{saving ? <><LoaderCircle className="spin" size={16} /> Menghapus...</> : <><Trash2 size={16} /> Hapus permanen</>}</button></div></InventoryDialog> : null}
       {toast ? <Toast text={toast} onClose={() => setToast("")} /> : null}
     </>

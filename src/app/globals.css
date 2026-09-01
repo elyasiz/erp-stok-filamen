@@ -289,6 +289,26 @@ button { color: inherit; }
 .inventory-detail dl div { display: grid; gap: 5px; border-bottom: 1px solid #eceee9; padding: 12px 2px; }
 .inventory-detail dt { color: var(--muted); font-size: 8px; font-weight: 700; text-transform: uppercase; }
 .inventory-detail dd { margin: 0; color: var(--ink); font-size: 10px; font-weight: 700; }
+.label-ready-note { display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; border: 1px solid #dce8c5; border-radius: 13px; background: #f7faef; color: #668124; padding: 12px 14px; }
+.label-ready-note > svg { flex: 0 0 auto; margin-top: 1px; }
+.label-ready-note > div { display: grid; gap: 4px; }
+.label-ready-note strong { color: var(--ink); font-size: 10px; }
+.label-ready-note span { color: #6d7860; font-size: 8px; line-height: 1.5; }
+.barcode-print-area { display: grid; place-items: center; margin-top: 16px; border-radius: 16px; background: #f1f3ef; padding: 18px; }
+.barcode-label { box-sizing: border-box; display: flex; width: min(100%, 500px); aspect-ratio: 2 / 1; flex-direction: column; gap: 7px; overflow: hidden; border: 1px solid #cfd4ca; border-radius: 11px; background: white; color: #111; box-shadow: 0 8px 24px rgb(19 26 35 / 10%); font-family: Arial, Helvetica, sans-serif; padding: 13px 15px 11px; }
+.barcode-label-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #e4e5e2; padding-bottom: 7px; }
+.barcode-label-head > span { color: #555b54; font-size: 8px; font-weight: 800; letter-spacing: .14em; white-space: nowrap; }
+.barcode-brand { display: flex; align-items: center; gap: 7px; min-width: 0; color: #df3732; }
+.barcode-brand > span { display: grid; width: 27px; height: 27px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: #df3732; color: white; font-size: 16px; font-weight: 900; }
+.barcode-brand > div { display: grid; gap: 1px; }
+.barcode-brand strong { font-size: 15px; font-weight: 900; letter-spacing: .04em; line-height: 1; }
+.barcode-brand small { color: #df3732; font-size: 5px; font-weight: 800; letter-spacing: .08em; }
+.barcode-product { display: grid; min-width: 0; gap: 3px; }
+.barcode-product strong { overflow: hidden; font-size: 12px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.barcode-product span { overflow: hidden; color: #50544e; font-size: 8px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.barcode-visual { display: flex; min-height: 0; flex: 1; align-items: center; justify-content: center; overflow: hidden; }
+.barcode-graphic { display: block; width: auto; max-width: 100%; height: 100%; max-height: 105px; }
+.barcode-label-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #454943; font-size: 7px; font-weight: 700; }
 .delete-copy { display: flex; align-items: center; gap: 13px; margin-top: 18px; border: 1px solid #f1d0cb; border-radius: 14px; background: #fff7f5; padding: 14px; }
 .delete-copy > span { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border-radius: 12px; background: #fee7e2; color: #b34d42; }
 .delete-copy > div { display: grid; gap: 4px; }
@@ -506,5 +526,14 @@ button { color: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
+
+@media print {
+  @page { size: 100mm 50mm; margin: 0; }
+  html, body { width: 100mm; height: 50mm; background: white !important; }
+  body * { visibility: hidden !important; }
+  .barcode-print-area, .barcode-print-area * { visibility: visible !important; }
+  .barcode-print-area { position: fixed; inset: 0; width: 100mm; height: 50mm; margin: 0; border-radius: 0; background: white; padding: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .barcode-label { width: 100mm; height: 50mm; aspect-ratio: auto; border: 0; border-radius: 0; box-shadow: none; padding: 3.5mm 4mm 3mm; }
 }
 
