@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://erp-stok-filamen.vercel.app"),
   title: "TIDIGO ERP · Stok Filamen",
   description: "Kelola unit, sisa gram, penggunaan, biaya, dan riwayat stok filamen TIDIGO.",
   openGraph: {
