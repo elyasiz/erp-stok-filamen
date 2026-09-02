@@ -452,8 +452,12 @@ button { color: inherit; }
 .large-scan-zone > div { display: flex; width: min(390px, 90%); gap: 7px; }
 .large-scan-zone input { min-width: 0; height: 40px; flex: 1; border: 1px solid #dce2d5; border-radius: 9px; outline: 0; background: white; padding: 0 11px; font-size: 10px; }
 .large-scan-zone button { border: 0; border-radius: 9px; background: var(--ink); color: white; cursor: pointer; font-size: 9px; font-weight: 700; padding: 0 13px; }
+.usage-camera-button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 7px; margin: 2px 0 6px; }
 .scan-cart { align-self: start; border: 1px solid var(--line); border-radius: var(--radius); background: white; box-shadow: var(--shadow); padding: 20px; }
 .cart-list { display: grid; gap: 8px; margin: 16px 0; }
+.scan-cart-empty { display: grid; min-height: 175px; place-items: center; align-content: center; gap: 7px; border: 1px dashed #d6dcd0; border-radius: 13px; background: #fafbf8; color: #859078; text-align: center; }
+.scan-cart-empty strong { color: var(--ink); font-size: 10px; }
+.scan-cart-empty span { color: var(--muted); font-size: 8px; }
 .cart-item { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; align-items: center; gap: 9px; border: 1px solid #e7e9e4; border-radius: 12px; background: #fafbf8; padding: 10px; }
 .slot { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 8px; background: #edf8dc; color: #66851d; font-size: 9px; font-weight: 800; }
 .cart-item > span:nth-child(2) { display: grid; min-width: 0; gap: 3px; }

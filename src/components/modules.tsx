@@ -3,6 +3,7 @@
 import {
   AlertCircle,
   Barcode,
+  Camera,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -29,7 +30,7 @@ import {
 } from "lucide-react";
 import JsBarcode from "jsbarcode";
 import { useEffect, useMemo, useRef, useState } from "react";
-import ReceiptView from "./receipt-view";
+import ReceiptView, { CameraBarcodeScanner } from "./receipt-view";
 
 export type ViewId =
   | "dashboard"
@@ -42,15 +43,6 @@ export type ViewId =
   | "history"
   | "users"
   | "settings";
-
-const demoUnits = [
-  { code: "FLM-2609-0018", product: "Bambu Lab PLA Basic", material: "PLA", color: "Jade White", pack: "With Spool", grams: 1000, status: "Tersedia", cost: "Rp189.000", supplier: "PT Kreasi 3D" },
-  { code: "FLM-2608-0148", product: "Bambu Lab PLA Basic", material: "PLA", color: "Matte Black", pack: "Refill", grams: 812, status: "Digunakan", cost: "Rp172.500", supplier: "PT Kreasi 3D" },
-  { code: "FLM-2608-0142", product: "Bambu Lab PLA Basic", material: "PLA", color: "Matte Black", pack: "With Spool", grams: 148, status: "Hampir Habis", cost: "Rp188.000", supplier: "PT Kreasi 3D" },
-  { code: "FLM-2608-0098", product: "eSUN PETG+HS", material: "PETG", color: "Fire Engine Red", pack: "With Spool", grams: 236, status: "Hampir Habis", cost: "Rp214.000", supplier: "Mitra Filamen" },
-  { code: "FLM-2607-0211", product: "Polymaker PolyTerra", material: "PLA", color: "Muted White", pack: "With Spool", grams: 381, status: "Hampir Habis", cost: "Rp229.000", supplier: "Filament Hub" },
-  { code: "FLM-2607-0204", product: "Polymaker PolyLite", material: "ABS", color: "Army Green", pack: "With Spool", grams: 672, status: "Tersedia", cost: "Rp238.000", supplier: "Filament Hub" },
-];
 
 const activeSessions = [
   { number: "USE-260901-012", user: "Operator Demo 1", type: "Kelas", started: "10:18", units: 2, elapsed: "42 menit", status: "Aktif" },
@@ -379,14 +371,40 @@ function InventoryView() {
 
 function UsageStartView() {
   const [usageType, setUsageType] = useState<"CLASS" | "NON_CLASS">("CLASS");
-  const [scanned, setScanned] = useState([demoUnits[0]]);
+  const [scanned, setScanned] = useState<InventoryItem[]>([]);
   const [code, setCode] = useState("");
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
   const [toast, setToast] = useState("");
-  const addUnit = () => {
-    const next = demoUnits.find((unit) => unit.code.toLowerCase() === code.trim().toLowerCase()) ?? demoUnits[5];
-    if (!scanned.some((unit) => unit.code === next.code)) setScanned([...scanned, next]);
-    setCode("");
+  const addUnit = async (scannedCode = code) => {
+    const normalizedCode = scannedCode.trim().toUpperCase();
+    if (!normalizedCode) return;
+    setLookingUp(true);
+    try {
+      const items = await fetchInventoryItems();
+      const next = items.find((item) => item.code.toUpperCase() === normalizedCode);
+      if (!next) {
+        setToast(`Unit ${normalizedCode} tidak ditemukan di Stok Filamen.`);
+        return;
+      }
+      if (!["AVAILABLE", "LOW_STOCK"].includes(next.status)) {
+        setToast(`Unit ${next.code} tidak dapat digunakan karena statusnya ${inventoryStatusLabels[next.status].toLowerCase()}.`);
+        return;
+      }
+      if (scanned.some((item) => item.id === next.id)) {
+        setToast(`Unit ${next.code} sudah ada dalam daftar.`);
+        return;
+      }
+      setScanned((current) => [...current, next]);
+      setToast(`Unit ${next.code} berhasil ditambahkan.`);
+      setCode("");
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "Barcode belum dapat diperiksa.");
+    } finally {
+      setLookingUp(false);
+    }
   };
+  const handleCameraScan = (value: string) => { setCameraOpen(false); setCode(value.toUpperCase()); void addUnit(value); };
   return (
     <>
       <ModuleHeading eyebrow="PENGGUNAAN · CHECK-OUT" title="Mulai penggunaan" description="Scan unit yang akan dibawa ke printer.">
@@ -398,16 +416,17 @@ function UsageStartView() {
           <div className="segmented"><button className={usageType === "CLASS" ? "active" : ""} onClick={() => setUsageType("CLASS")}>Kelas</button><button className={usageType === "NON_CLASS" ? "active" : ""} onClick={() => setUsageType("NON_CLASS")}>Nonkelas</button></div>
           {usageType === "NON_CLASS" ? <div className="inline-field"><label><input type="radio" name="nonclass" defaultChecked /> Trial Print</label><label><input type="radio" name="nonclass" /> Sample</label></div> : <div className="info-strip"><CheckCircle2 size={17} /> Detail kelas dan siswa tidak diperlukan pada MVP.</div>}
           <div className="section-divider" />
-          <div className="section-title"><div><h2>2. Scan barcode unit</h2><p>Scanner USB siap menerima input dan Enter.</p></div></div>
-          <div className="large-scan-zone"><ScanBarcode size={44} /><strong>Scan unit filamen</strong><p>Gunakan scanner USB atau masukkan kode secara manual.</p><div><input value={code} onChange={(event) => setCode(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addUnit()} placeholder="FLM-2608-0142" /><button onClick={addUnit}>Tambahkan</button></div></div>
+          <div className="section-title"><div><h2>2. Scan barcode unit</h2><p>Kamera PC, kamera HP, dan scanner USB siap digunakan.</p></div></div>
+          <div className="large-scan-zone usage-scan-zone"><ScanBarcode size={44} /><strong>Scan unit filamen</strong><p>Arahkan kamera ke label unit atau masukkan kode secara manual.</p><button className="usage-camera-button" onClick={() => setCameraOpen(true)}><Camera size={17} /> Buka kamera untuk scan</button><div><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} onKeyDown={(event) => { if (event.key === "Enter") void addUnit(); }} placeholder="FLM-2609-ABC123-01-01" /><button onClick={() => void addUnit()} disabled={lookingUp}>{lookingUp ? <LoaderCircle className="spin" size={15} /> : null} Tambahkan</button></div></div>
         </section>
         <aside className="scan-cart">
           <div className="section-title"><div><h2>Unit yang di-scan</h2><p>{scanned.length} unit siap digunakan</p></div><span className="count-badge">{scanned.length}</span></div>
-          <div className="cart-list">{scanned.map((unit, index) => <div className="cart-item" key={unit.code}><span className="slot">{index + 1}</span><span><strong>{unit.product}</strong><small>{unit.code} · {unit.color}</small><em>{unit.grams.toLocaleString("id-ID")} gram tersisa</em></span><button onClick={() => setScanned(scanned.filter((item) => item.code !== unit.code))}><X size={16} /></button></div>)}</div>
-          <div className="cart-summary"><span>Total estimasi tersedia</span><strong>{scanned.reduce((sum, unit) => sum + unit.grams, 0).toLocaleString("id-ID")} gram</strong></div>
+          <div className="cart-list">{scanned.length ? scanned.map((unit, index) => <div className="cart-item" key={unit.id}><span className="slot">{index + 1}</span><span><strong>{unit.product}</strong><small>{unit.code} · {unit.color}</small><em>{unit.remainingGrams.toLocaleString("id-ID")} gram tersisa</em></span><button onClick={() => setScanned(scanned.filter((item) => item.id !== unit.id))} aria-label={`Hapus ${unit.code}`}><X size={16} /></button></div>) : <div className="scan-cart-empty"><ScanBarcode size={25} /><strong>Belum ada unit</strong><span>Scan label pada spool atau refill.</span></div>}</div>
+          <div className="cart-summary"><span>Total estimasi tersedia</span><strong>{scanned.reduce((sum, unit) => sum + unit.remainingGrams, 0).toLocaleString("id-ID")} gram</strong></div>
           <button className="button primary full" disabled={!scanned.length} onClick={() => setToast(`Penggunaan ${usageType === "CLASS" ? "Kelas" : "Nonkelas"} berhasil dimulai.`)}><ScanBarcode size={17} /> Konfirmasi pengambilan</button>
         </aside>
       </div>
+      {cameraOpen ? <CameraBarcodeScanner contextLabel="PEMINDAI UNIT" onDetected={handleCameraScan} onClose={() => setCameraOpen(false)} /> : null}
       {toast ? <Toast text={toast} onClose={() => setToast("")} /> : null}
     </>
   );

@@ -153,7 +153,7 @@ type BarcodeDetectorConstructor = {
   getSupportedFormats?: () => Promise<string[]>;
 };
 
-function CameraBarcodeScanner({ onDetected, onClose }: { onDetected: (value: string) => void; onClose: () => void }) {
+export function CameraBarcodeScanner({ onDetected, onClose, contextLabel = "PEMINDAI BARCODE" }: { onDetected: (value: string) => void; onClose: () => void; contextLabel?: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const detectedRef = useRef(onDetected);
   const [cameraState, setCameraState] = useState<"starting" | "active" | "manual" | "error">("starting");
@@ -243,7 +243,7 @@ function CameraBarcodeScanner({ onDetected, onClose }: { onDetected: (value: str
   return (
     <div className="dialog-layer" role="presentation">
       <section className="camera-dialog" role="dialog" aria-modal="true" aria-labelledby="camera-title">
-        <div className="dialog-head"><div><span className="eyebrow">PEMINDAI PRODUK</span><h2 id="camera-title">Scan barcode dengan kamera</h2></div><button className="icon-button" onClick={onClose} aria-label="Tutup kamera"><X size={18} /></button></div>
+        <div className="dialog-head"><div><span className="eyebrow">{contextLabel}</span><h2 id="camera-title">Scan barcode dengan kamera</h2></div><button className="icon-button" onClick={onClose} aria-label="Tutup kamera"><X size={18} /></button></div>
         <div className={`camera-viewport ${cameraState}`}>
           <video ref={videoRef} muted playsInline aria-label="Pratinjau kamera" />
           <div className="camera-frame"><i /><i /><i /><i /><span /></div>
@@ -463,7 +463,7 @@ export default function ReceiptView() {
 
       {dialogMode === "delete" && selected ? <ReceiptDialog eyebrow="KONFIRMASI" title={`Hapus ${selected.receiptNumber}?`} onClose={() => { setDialogMode(null); setSelected(null); setFormError(""); }}><div className="delete-copy"><span><Trash2 size={22} /></span><div><strong>Penerimaan dan unit stok buatannya akan dihapus.</strong><p>Penghapusan akan ditolak bila salah satu unit sudah digunakan.</p></div></div>{formError ? <div className="inventory-form-error" role="alert"><AlertCircle size={16} />{formError}</div> : null}<div className="dialog-actions"><button className="button secondary" onClick={() => { setDialogMode(null); setSelected(null); }} disabled={saving}>Batal</button><button className="button danger-button solid" onClick={() => void deleteSelected()} disabled={saving}>{saving ? <><LoaderCircle className="spin" size={16} /> Menghapus...</> : <><Trash2 size={16} /> Hapus permanen</>}</button></div></ReceiptDialog> : null}
 
-      {scannerLine !== null ? <CameraBarcodeScanner onDetected={handleDetected} onClose={() => setScannerLine(null)} /> : null}
+      {scannerLine !== null ? <CameraBarcodeScanner contextLabel="PEMINDAI PRODUK" onDetected={handleDetected} onClose={() => setScannerLine(null)} /> : null}
       {toast ? <Toast text={toast} onClose={() => setToast("")} /> : null}
     </>
   );
