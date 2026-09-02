@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { DecodeHintType as ZXingDecodeHintType } from "@zxing/library";
 
 type ReceiptStatus = "DRAFT" | "FINALIZED";
 type PackagingType = "WITH_SPOOL" | "REFILL";
@@ -147,12 +148,6 @@ function ReceiptDialog({ children, eyebrow, title, onClose, wide = false }: { ch
   );
 }
 
-type BarcodeDetectorInstance = { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue: string }>> };
-type BarcodeDetectorConstructor = {
-  new (options: { formats: string[] }): BarcodeDetectorInstance;
-  getSupportedFormats?: () => Promise<string[]>;
-};
-
 export function CameraBarcodeScanner({ onDetected, onClose, contextLabel = "PEMINDAI BARCODE" }: { onDetected: (value: string) => void; onClose: () => void; contextLabel?: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const detectedRef = useRef(onDetected);
@@ -164,13 +159,11 @@ export function CameraBarcodeScanner({ onDetected, onClose, contextLabel = "PEMI
 
   useEffect(() => {
     let stopped = false;
-    let frame = 0;
-    let stream: MediaStream | null = null;
+    let scannerControls: { stop: () => void } | null = null;
 
     const stop = () => {
       stopped = true;
-      window.cancelAnimationFrame(frame);
-      stream?.getTracks().forEach((track) => track.stop());
+      scannerControls?.stop();
     };
 
     const start = async () => {
@@ -180,54 +173,32 @@ export function CameraBarcodeScanner({ onDetected, onClose, contextLabel = "PEMI
         return;
       }
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
-        if (stopped) return stop();
         const video = videoRef.current;
         if (!video) return;
-        video.srcObject = stream;
-        await video.play();
-
-        const Detector = (window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
-        if (!Detector) {
-          setCameraState("manual");
-          setMessage("Kamera aktif. Pemindaian otomatis tidak tersedia di browser ini; gunakan kolom manual di bawah.");
-          return;
-        }
-
-        const preferredFormats = ["code_128", "ean_13", "ean_8", "upc_a", "upc_e", "qr_code"];
-        const supportedFormats = Detector.getSupportedFormats ? await Detector.getSupportedFormats() : preferredFormats;
-        const formats = preferredFormats.filter((format) => supportedFormats.includes(format));
-        if (!formats.length) {
-          setCameraState("manual");
-          setMessage("Kamera aktif, tetapi format barcode belum didukung browser ini. Gunakan kolom manual di bawah.");
-          return;
-        }
-        const detector = new Detector({ formats });
+        const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([import("@zxing/browser"), import("@zxing/library")]);
+        const formats = [BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.QR_CODE];
+        const hints = new Map<ZXingDecodeHintType, unknown>([[DecodeHintType.POSSIBLE_FORMATS, formats], [DecodeHintType.TRY_HARDER, true]]);
+        const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 80, delayBetweenScanSuccess: 500 });
+        if (stopped) return;
         setCameraState("active");
-        setMessage("Arahkan barcode ke dalam kotak sampai terbaca otomatis.");
-        const scan = async () => {
-          if (stopped) return;
-          try {
-            if (video.readyState >= 2) {
-              const results = await detector.detect(video);
-              const value = results[0]?.rawValue?.trim();
-              if (value) {
-                stop();
-                detectedRef.current(value);
-                return;
-              }
+        setMessage("Arahkan barcode Code 128 pada label Stok Filamen ke dalam kotak. Jaga label tetap datar dan cukup terang.");
+        scannerControls = await reader.decodeFromConstraints(
+          { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+          video,
+          (result, _error, controls) => {
+            const value = result?.getText().trim();
+            if (value && !stopped) {
+              stopped = true;
+              controls.stop();
+              detectedRef.current(value);
             }
-          } catch {
-            // Beberapa frame dapat gagal saat kamera sedang menyesuaikan fokus.
           }
-          frame = window.requestAnimationFrame(() => void scan());
-        };
-        frame = window.requestAnimationFrame(() => void scan());
+        );
+        if (stopped) scannerControls.stop();
       } catch (error) {
-        stream?.getTracks().forEach((track) => track.stop());
         const name = error instanceof DOMException ? error.name : "";
         setCameraState("error");
-        setMessage(name === "NotAllowedError" ? "Izin kamera ditolak. Izinkan kamera pada browser atau masukkan barcode manual." : name === "NotFoundError" ? "Kamera tidak ditemukan pada perangkat ini." : "Kamera belum dapat dibuka. Coba lagi atau masukkan barcode manual.");
+        setMessage(name === "NotAllowedError" ? "Izin kamera ditolak. Izinkan kamera pada browser atau masukkan barcode manual." : name === "NotFoundError" ? "Kamera tidak ditemukan pada perangkat ini." : "Pemindai belum dapat dibuka. Coba lagi atau masukkan barcode manual.");
       }
     };
 
@@ -247,6 +218,7 @@ export function CameraBarcodeScanner({ onDetected, onClose, contextLabel = "PEMI
         <div className={`camera-viewport ${cameraState}`}>
           <video ref={videoRef} muted playsInline aria-label="Pratinjau kamera" />
           <div className="camera-frame"><i /><i /><i /><i /><span /></div>
+          <span className="camera-format-badge">CODE 128 · LABEL STOK</span>
           {cameraState === "starting" ? <LoaderCircle className="camera-loader spin" size={30} /> : null}
           {cameraState === "error" ? <div className="camera-error"><Camera size={34} /><strong>Kamera tidak aktif</strong></div> : null}
         </div>
