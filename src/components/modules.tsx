@@ -6,7 +6,6 @@ import {
   Camera,
   Check,
   CheckCircle2,
-  ChevronRight,
   ClipboardCheck,
   Download,
   Eye,
@@ -43,13 +42,6 @@ export type ViewId =
   | "history"
   | "users"
   | "settings";
-
-const activeSessions = [
-  { number: "USE-260901-012", user: "Operator Demo 1", type: "Kelas", started: "10:18", units: 2, elapsed: "42 menit", status: "Aktif" },
-  { number: "USE-260901-011", user: "Operator Demo 2", type: "Trial Print", started: "09:42", units: 1, elapsed: "1j 18m", status: "Aktif" },
-  { number: "USE-260901-009", user: "Operator Demo 3", type: "Sample", started: "08:54", units: 3, elapsed: "2j 06m", status: "Aktif" },
-  { number: "USE-260901-007", user: "Operator Demo 4", type: "Kelas", started: "08:26", units: 2, elapsed: "2j 34m", status: "Aktif" },
-];
 
 const ledger = [
   { time: "01 Sep · 10:42", code: "FLM-2608-0128", type: "Penggunaan", ref: "USE-260901-008", change: "−184,50 g", before: "812,00 g", after: "627,50 g", user: "Operator Demo 4" },
@@ -95,6 +87,19 @@ type InventoryItem = {
 };
 
 type InventoryFormData = Omit<InventoryItem, "id" | "createdAt" | "updatedAt">;
+
+type UsageSessionSummary = {
+  id: string;
+  number: string;
+  userName: string;
+  usageType: "CLASS" | "NON_CLASS";
+  nonClassType: "TRIAL_PRINT" | "SAMPLE" | null;
+  status: "ACTIVE";
+  startedAt: string;
+  completedAt: string | null;
+  unitCount: number;
+  totalStartingGrams: number;
+};
 
 const inventoryStatusLabels: Record<InventoryStatusCode, string> = {
   AVAILABLE: "Tersedia",
@@ -171,6 +176,13 @@ async function fetchInventoryItems(): Promise<InventoryItem[]> {
   const data = await response.json();
   if (!response.ok) throw new Error(data.message ?? "Gagal memuat stok filamen.");
   return data.items ?? [];
+}
+
+async function fetchActiveUsageSessions(): Promise<UsageSessionSummary[]> {
+  const response = await fetch("/api/v1/usages", { cache: "no-store" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message ?? "Gagal memuat penggunaan aktif.");
+  return data.sessions ?? [];
 }
 
 function BarcodeGraphic({ value }: { value: string }) {
@@ -369,12 +381,16 @@ function InventoryView() {
   );
 }
 
-function UsageStartView() {
+function UsageStartView({ onNavigate }: { onNavigate: (view: ViewId) => void }) {
+  const [userName, setUserName] = useState("");
   const [usageType, setUsageType] = useState<"CLASS" | "NON_CLASS">("CLASS");
+  const [nonClassType, setNonClassType] = useState<"TRIAL_PRINT" | "SAMPLE">("TRIAL_PRINT");
   const [scanned, setScanned] = useState<InventoryItem[]>([]);
   const [code, setCode] = useState("");
   const [cameraOpen, setCameraOpen] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
   const [toast, setToast] = useState("");
   const addUnit = async (scannedCode = code) => {
     const normalizedCode = scannedCode.trim().toUpperCase();
@@ -405,25 +421,58 @@ function UsageStartView() {
     }
   };
   const handleCameraScan = (value: string) => { setCameraOpen(false); setCode(value.toUpperCase()); void addUnit(value); };
+  const confirmUsage = async () => {
+    const cleanName = userName.trim();
+    if (cleanName.length < 2) {
+      setFormError("Masukkan nama pengambil minimal 2 karakter.");
+      return;
+    }
+    if (!scanned.length) {
+      setFormError("Scan minimal satu unit filamen sebelum konfirmasi.");
+      return;
+    }
+    setSaving(true);
+    setFormError("");
+    try {
+      const response = await fetch("/api/v1/usages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userName: cleanName,
+          usageType,
+          nonClassType: usageType === "NON_CLASS" ? nonClassType : null,
+          inventoryItemIds: scanned.map((item) => item.id),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? "Penggunaan belum dapat dikonfirmasi.");
+      onNavigate("usage-active");
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Penggunaan belum dapat dikonfirmasi.");
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <>
-      <ModuleHeading eyebrow="PENGGUNAAN · CHECK-OUT" title="Mulai penggunaan" description="Scan unit yang akan dibawa ke printer.">
-        <div className="identity-pill"><span className="avatar soft">AT</span><span><small>Pengambil otomatis</small><strong>Admin TIDIGO</strong></span><ShieldCheck size={17} /></div>
-      </ModuleHeading>
+      <ModuleHeading eyebrow="PENGGUNAAN · CHECK-OUT" title="Mulai penggunaan" description="Scan unit, isi pengambil dan jenis penggunaan, lalu konfirmasi." />
       <div className="workflow-grid">
         <section className="form-panel">
-          <div className="section-title"><div><h2>1. Tujuan penggunaan</h2><p>Pilih kategori agar biaya tercatat pada laporan yang tepat.</p></div></div>
-          <div className="segmented"><button className={usageType === "CLASS" ? "active" : ""} onClick={() => setUsageType("CLASS")}>Kelas</button><button className={usageType === "NON_CLASS" ? "active" : ""} onClick={() => setUsageType("NON_CLASS")}>Nonkelas</button></div>
-          {usageType === "NON_CLASS" ? <div className="inline-field"><label><input type="radio" name="nonclass" defaultChecked /> Trial Print</label><label><input type="radio" name="nonclass" /> Sample</label></div> : <div className="info-strip"><CheckCircle2 size={17} /> Detail kelas dan siswa tidak diperlukan pada MVP.</div>}
-          <div className="section-divider" />
-          <div className="section-title"><div><h2>2. Scan barcode unit</h2><p>Kamera PC, kamera HP, dan scanner USB siap digunakan.</p></div></div>
+          <div className="section-title"><div><h2>1. Scan barcode unit</h2><p>Kamera PC, kamera HP, dan scanner USB siap digunakan.</p></div></div>
           <div className="large-scan-zone usage-scan-zone"><ScanBarcode size={44} /><strong>Scan unit filamen</strong><p>Arahkan kamera ke label unit atau masukkan kode secara manual.</p><button className="usage-camera-button" onClick={() => setCameraOpen(true)}><Camera size={17} /> Buka kamera untuk scan</button><div><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} onKeyDown={(event) => { if (event.key === "Enter") void addUnit(); }} placeholder="FLM-2609-ABC123-01-01" /><button onClick={() => void addUnit()} disabled={lookingUp}>{lookingUp ? <LoaderCircle className="spin" size={15} /> : null} Tambahkan</button></div></div>
+          <div className="section-divider" />
+          <div className="section-title"><div><h2>2. Identitas & jenis penggunaan</h2><p>Data ini akan tampil pada Penggunaan Aktif dan tersimpan di database.</p></div><ShieldCheck size={20} /></div>
+          <label className="stack-field usage-name-field"><span>Nama pengambil *</span><input required maxLength={120} value={userName} onChange={(event) => { setUserName(event.target.value); setFormError(""); }} placeholder="Masukkan nama pengguna" /></label>
+          <div className="segmented"><button className={usageType === "CLASS" ? "active" : ""} onClick={() => setUsageType("CLASS")}>Kelas</button><button className={usageType === "NON_CLASS" ? "active" : ""} onClick={() => setUsageType("NON_CLASS")}>Nonkelas</button></div>
+          {usageType === "NON_CLASS" ? <div className="inline-field"><label><input type="radio" name="nonclass" checked={nonClassType === "TRIAL_PRINT"} onChange={() => setNonClassType("TRIAL_PRINT")} /> Trial Print</label><label><input type="radio" name="nonclass" checked={nonClassType === "SAMPLE"} onChange={() => setNonClassType("SAMPLE")} /> Sample</label></div> : <div className="info-strip"><CheckCircle2 size={17} /> Penggunaan dicatat sebagai kegiatan Kelas.</div>}
         </section>
         <aside className="scan-cart">
           <div className="section-title"><div><h2>Unit yang di-scan</h2><p>{scanned.length} unit siap digunakan</p></div><span className="count-badge">{scanned.length}</span></div>
           <div className="cart-list">{scanned.length ? scanned.map((unit, index) => <div className="cart-item" key={unit.id}><span className="slot">{index + 1}</span><span><strong>{unit.product}</strong><small>{unit.code} · {unit.color}</small><em>{unit.remainingGrams.toLocaleString("id-ID")} gram tersisa</em></span><button onClick={() => setScanned(scanned.filter((item) => item.id !== unit.id))} aria-label={`Hapus ${unit.code}`}><X size={16} /></button></div>) : <div className="scan-cart-empty"><ScanBarcode size={25} /><strong>Belum ada unit</strong><span>Scan label pada spool atau refill.</span></div>}</div>
           <div className="cart-summary"><span>Total estimasi tersedia</span><strong>{scanned.reduce((sum, unit) => sum + unit.remainingGrams, 0).toLocaleString("id-ID")} gram</strong></div>
-          <button className="button primary full" disabled={!scanned.length} onClick={() => setToast(`Penggunaan ${usageType === "CLASS" ? "Kelas" : "Nonkelas"} berhasil dimulai.`)}><ScanBarcode size={17} /> Konfirmasi pengambilan</button>
+          {formError ? <div className="inventory-form-error" role="alert"><AlertCircle size={16} />{formError}</div> : null}
+          <p className="usage-confirm-note"><ShieldCheck size={15} /> Setelah dikonfirmasi, sesi masuk ke Penggunaan Aktif dan unit berubah menjadi Digunakan.</p>
+          <button className="button primary full" disabled={!scanned.length || userName.trim().length < 2 || saving} onClick={() => void confirmUsage()}>{saving ? <><LoaderCircle className="spin" size={17} /> Menyimpan...</> : <><ScanBarcode size={17} /> Konfirmasi pengambilan</>}</button>
         </aside>
       </div>
       {cameraOpen ? <CameraBarcodeScanner contextLabel="PEMINDAI UNIT" onDetected={handleCameraScan} onClose={() => setCameraOpen(false)} /> : null}
@@ -432,12 +481,57 @@ function UsageStartView() {
   );
 }
 
-function ActiveUsageView() {
+function usageTypeLabel(session: UsageSessionSummary) {
+  if (session.usageType === "CLASS") return "Kelas";
+  return session.nonClassType === "SAMPLE" ? "Sample" : "Trial Print";
+}
+
+function elapsedSince(value: string) {
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
+  if (minutes < 60) return `${minutes} menit`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}j ${rest}m` : `${hours} jam`;
+}
+
+function ActiveUsageView({ onNavigate }: { onNavigate: (view: ViewId) => void }) {
+  const [sessions, setSessions] = useState<UsageSessionSummary[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  const loadSessions = async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      setSessions(await fetchActiveUsageSessions());
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Gagal memuat penggunaan aktif.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let ignore = false;
+    fetchActiveUsageSessions()
+      .then((items) => { if (!ignore) setSessions(items); })
+      .catch((error) => { if (!ignore) setLoadError(error instanceof Error ? error.message : "Gagal memuat penggunaan aktif."); })
+      .finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
+  }, []);
+
+  const query = search.trim().toLowerCase();
+  const visibleSessions = sessions.filter((session) => !query || session.number.toLowerCase().includes(query) || session.userName.toLowerCase().includes(query));
+  const classSessions = sessions.filter((session) => session.usageType === "CLASS");
+  const trialSessions = sessions.filter((session) => session.nonClassType === "TRIAL_PRINT");
+  const sampleSessions = sessions.filter((session) => session.nonClassType === "SAMPLE");
+  const unitTotal = sessions.reduce((sum, session) => sum + session.unitCount, 0);
   return (
     <>
-      <ModuleHeading eyebrow="PENGGUNAAN" title="Penggunaan aktif" description="Unit yang sedang berada di luar penyimpanan."><button className="button primary"><Plus size={17} /> Mulai penggunaan</button></ModuleHeading>
-      <section className="module-stats"><article><span>Sesi aktif</span><strong>8</strong><small>12 unit filamen</small></article><article><span>Kelas</span><strong>5</strong><small>8 unit</small></article><article><span>Trial Print</span><strong>2</strong><small>2 unit</small></article><article><span>Sample</span><strong>1</strong><small>2 unit</small></article></section>
-      <section className="data-panel"><div className="toolbar"><label className="table-search"><Search size={17} /><input placeholder="Cari nomor penggunaan atau pengguna..." /></label><button className="mini-button"><Filter size={15} /> Filter</button></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Nomor penggunaan</th><th>Pengambil</th><th>Jenis</th><th>Mulai</th><th>Unit</th><th>Durasi</th><th>Status</th><th /></tr></thead><tbody>{activeSessions.map((session) => <tr key={session.number}><td><strong className="cell-main">{session.number}</strong></td><td>{session.user}</td><td>{session.type}</td><td>{session.started}</td><td>{session.units} unit</td><td>{session.elapsed}</td><td><Status>{session.status}</Status></td><td><button className="table-action"><ChevronRight size={17} /></button></td></tr>)}</tbody></table></div></section>
+      <ModuleHeading eyebrow="PENGGUNAAN" title="Penggunaan aktif" description="Sesi yang sudah dikonfirmasi dan unit yang sedang berada di luar penyimpanan."><button className="button primary" onClick={() => onNavigate("usage-start")}><Plus size={17} /> Mulai penggunaan</button></ModuleHeading>
+      <section className="module-stats"><article><span>Sesi aktif</span><strong>{sessions.length}</strong><small>{unitTotal} unit filamen</small></article><article><span>Kelas</span><strong>{classSessions.length}</strong><small>{classSessions.reduce((sum, session) => sum + session.unitCount, 0)} unit</small></article><article><span>Trial Print</span><strong>{trialSessions.length}</strong><small>{trialSessions.reduce((sum, session) => sum + session.unitCount, 0)} unit</small></article><article><span>Sample</span><strong>{sampleSessions.length}</strong><small>{sampleSessions.reduce((sum, session) => sum + session.unitCount, 0)} unit</small></article></section>
+      <section className="data-panel"><div className="toolbar"><label className="table-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari nomor penggunaan atau pengguna..." /></label><button className="mini-button" onClick={() => void loadSessions()} disabled={loading}>{loading ? <LoaderCircle className="spin" size={15} /> : null} Muat ulang</button></div>{loadError ? <div className="inventory-load-error"><AlertCircle size={24} /><div><strong>Data belum dapat dimuat</strong><span>{loadError}</span></div><button className="mini-button" onClick={() => void loadSessions()}>Coba lagi</button></div> : <div className="table-wrap"><table className="data-table"><thead><tr><th>Nomor penggunaan</th><th>Pengambil</th><th>Jenis</th><th>Mulai</th><th>Unit</th><th>Durasi</th><th>Status</th></tr></thead><tbody>{loading ? <tr><td colSpan={7}><div className="inventory-empty"><LoaderCircle className="spin" size={26} /><strong>Memuat penggunaan aktif...</strong></div></td></tr> : visibleSessions.length ? visibleSessions.map((session) => <tr key={session.id}><td><strong className="cell-main">{session.number}</strong></td><td>{session.userName}</td><td>{usageTypeLabel(session)}</td><td>{new Date(session.startedAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}</td><td>{session.unitCount} unit</td><td>{elapsedSince(session.startedAt)}</td><td><Status>Aktif</Status></td></tr>) : <tr><td colSpan={7}><div className="inventory-empty"><span><ScanBarcode size={25} /></span><strong>{query ? "Penggunaan tidak ditemukan" : "Belum ada penggunaan aktif"}</strong><p>{query ? "Coba kata pencarian lain." : "Sesi yang dikonfirmasi dari menu Mulai Penggunaan akan tampil di sini."}</p></div></td></tr>}</tbody></table></div>}</section>
     </>
   );
 }
@@ -505,11 +599,11 @@ function SettingsView() {
   return <><ModuleHeading eyebrow="ADMINISTRATION" title="Pengaturan sistem" description="Konfigurasi lokasi, label, dan batas stok."><button className="button primary"><Check size={17} /> Simpan perubahan</button></ModuleHeading><div className="settings-grid"><section className="form-panel"><div className="section-title"><div><h2>Aturan inventory</h2><p>Berlaku untuk seluruh unit filamen.</p></div><SlidersHorizontal size={20} /></div><div className="form-grid"><label><span>Batas hampir habis (gram)</span><input type="number" defaultValue="500" /></label><label><span>Berat nominal unit (gram)</span><input type="number" defaultValue="1000" disabled /></label><label><span>Lokasi default</span><select><option>Gudang Filamen Utama</option></select></label><label><span>Zona waktu</span><select><option>Asia/Jakarta (WIB)</option></select></label></div></section><section className="form-panel"><div className="section-title"><div><h2>Format label</h2><p>Default untuk PDF barcode Code 128.</p></div><Printer size={20} /></div><div className="label-preview"><Barcode size={80} strokeWidth={1} /><strong>FLM-2609-0018</strong><small>Bambu Lab PLA Basic · Matte Black</small></div><div className="form-grid"><label><span>Ukuran kertas</span><select><option>A4 · 24 label</option><option>A4 · 40 label</option></select></label><label><span>Tipe barcode</span><select disabled><option>Code 128</option></select></label></div></section></div></>;
 }
 
-export function ModuleView({ view }: { view: ViewId }) {
+export function ModuleView({ view, onNavigate }: { view: ViewId; onNavigate: (view: ViewId) => void }) {
   if (view === "inventory") return <InventoryView />;
   if (view === "receipt") return <ReceiptView />;
-  if (view === "usage-start") return <UsageStartView />;
-  if (view === "usage-active") return <ActiveUsageView />;
+  if (view === "usage-start") return <UsageStartView onNavigate={onNavigate} />;
+  if (view === "usage-active") return <ActiveUsageView onNavigate={onNavigate} />;
   if (view === "usage-complete") return <CompleteUsageView />;
   if (view === "reports") return <ReportsView />;
   if (view === "history") return <ReportsView ledgerOnly />;

@@ -44,7 +44,7 @@ const navigation: Array<{ label: string; items: Array<{ label: string; icon: Luc
     items: [
       { label: "Barang masuk", icon: PackagePlus, view: "receipt" },
       { label: "Mulai penggunaan", icon: ScanLine, view: "usage-start" },
-      { label: "Penggunaan aktif", icon: Clock3, view: "usage-active", count: "12" },
+      { label: "Penggunaan aktif", icon: Clock3, view: "usage-active" },
       { label: "Selesaikan", icon: ClipboardCheck, view: "usage-complete" },
     ],
   },
@@ -370,7 +370,7 @@ export default function Home() {
               </div>
             </section>
           </div>
-          </> : <ModuleView view={view} />}
+          </> : <ModuleView view={view} onNavigate={selectView} />}
         </main>
       </div>
 

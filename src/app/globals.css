@@ -468,6 +468,8 @@ button { color: inherit; }
 .cart-item button { display: grid; width: 27px; height: 27px; place-items: center; border: 0; background: transparent; color: #8c949c; cursor: pointer; }
 .cart-summary { display: flex; justify-content: space-between; border-top: 1px solid #e7e9e4; color: var(--muted); font-size: 9px; padding-top: 14px; }
 .cart-summary strong { color: var(--ink); }
+.usage-confirm-note { display: flex; align-items: flex-start; gap: 7px; margin: 13px 0 3px; border-radius: 10px; background: #f4f6fd; color: #66708a; font-size: 8px; line-height: 1.5; padding: 10px 11px; }
+.usage-confirm-note svg { flex: 0 0 auto; color: #6373d6; }
 
 .complete-search { display: grid; grid-template-columns: auto minmax(180px, 1fr) minmax(170px, 300px) auto; align-items: center; gap: 12px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 16px; background: white; box-shadow: var(--shadow); padding: 14px 16px; }
 .complete-search > svg { color: #738e24; }
