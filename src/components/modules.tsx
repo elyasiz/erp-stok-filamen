@@ -2,12 +2,10 @@
 
 import {
   AlertCircle,
-  ArrowUpRight,
   Barcode,
   Check,
   CheckCircle2,
   ChevronRight,
-  CircleDollarSign,
   ClipboardCheck,
   Download,
   Eye,
@@ -15,13 +13,11 @@ import {
   Filter,
   History,
   LoaderCircle,
-  PackageCheck,
   PackageOpen,
   PackagePlus,
   Pencil,
   Plus,
   Printer,
-  ReceiptText,
   ScanBarcode,
   Search,
   ShieldCheck,
@@ -33,6 +29,7 @@ import {
 } from "lucide-react";
 import JsBarcode from "jsbarcode";
 import { useEffect, useMemo, useRef, useState } from "react";
+import ReceiptView from "./receipt-view";
 
 export type ViewId =
   | "dashboard"
@@ -376,48 +373,6 @@ function InventoryView() {
       {mode === "label" && selected ? <InventoryDialog eyebrow="LABEL SIAP CETAK" title={selected.code} onClose={closeDialog}><div className="label-ready-note"><CheckCircle2 size={18} /><div><strong>Barcode Code 128 sudah dibuat.</strong><span>Gunakan kertas label 100 × 50 mm, lalu pilih skala 100% pada pengaturan printer.</span></div></div><PrintableBarcodeLabel item={selected} /><div className="dialog-actions"><button className="button secondary" onClick={closeDialog}>Selesai</button><button className="button primary" onClick={() => window.print()}><Printer size={16} /> Cetak label</button></div></InventoryDialog> : null}
       {mode === "delete" && selected ? <InventoryDialog eyebrow="KONFIRMASI" title={`Hapus ${selected.code}?`} onClose={closeDialog}><div className="delete-copy"><span><Trash2 size={22} /></span><div><strong>Data akan dihapus permanen.</strong><p>Unit {selected.product} tidak akan tampil lagi di stok filamen.</p></div></div>{formError ? <div className="inventory-form-error" role="alert"><AlertCircle size={16} />{formError}</div> : null}<div className="dialog-actions"><button className="button secondary" onClick={closeDialog} disabled={saving}>Batal</button><button className="button danger-button solid" onClick={() => void deleteItem()} disabled={saving}>{saving ? <><LoaderCircle className="spin" size={16} /> Menghapus...</> : <><Trash2 size={16} /> Hapus permanen</>}</button></div></InventoryDialog> : null}
       {toast ? <Toast text={toast} onClose={() => setToast("")} /> : null}
-    </>
-  );
-}
-
-function ReceiptView() {
-  const [finalized, setFinalized] = useState(false);
-  return (
-    <>
-      <ModuleHeading eyebrow="INVENTORY · BARANG MASUK" title="Catat barang masuk" description="Satu finalisasi akan membentuk unit, ledger, dan label barcode.">
-        <button className="button secondary"><History size={17} /> Riwayat penerimaan</button>
-      </ModuleHeading>
-      <ol className="steps"><li className="done"><i><Check size={14} /></i><span>Informasi pembelian</span></li><li className="active"><i>2</i><span>Produk & jumlah</span></li><li><i>3</i><span>Tinjau biaya</span></li><li><i>4</i><span>Finalisasi</span></li></ol>
-      <div className="receipt-grid">
-        <section className="form-panel">
-          <div className="section-title"><div><h2>Informasi supplier & invoice</h2><p>Data sumber pembelian dan dokumen pendukung.</p></div><ReceiptText size={20} /></div>
-          <div className="form-grid">
-            <label><span>Supplier</span><select defaultValue="PT Kreasi 3D"><option>PT Kreasi 3D</option><option>Mitra Filamen</option><option>Filament Hub</option></select></label>
-            <label><span>Nomor invoice</span><input defaultValue="INV-K3D-2609-018" /></label>
-            <label><span>Tanggal pembelian</span><input type="date" defaultValue="2026-09-01" /></label>
-            <label><span>Tanggal diterima</span><input type="date" defaultValue="2026-09-01" /></label>
-          </div>
-          <div className="section-divider" />
-          <div className="section-title"><div><h2>Produk yang diterima</h2><p>Scan barcode produk atau pilih master produk.</p></div><button className="mini-button"><ScanBarcode size={15} /> Scan produk</button></div>
-          <div className="receipt-item">
-            <span className="item-index">01</span>
-            <div className="receipt-product"><strong>Bambu Lab PLA Basic</strong><small>PLA · Matte Black · With Spool</small><code>6975337031170</code></div>
-            <label><span>Jumlah</span><input type="number" defaultValue="8" min="1" /></label>
-            <label><span>Harga / unit</span><input defaultValue="188000" /></label>
-            <button className="table-action" aria-label="Hapus produk"><X size={16} /></button>
-          </div>
-          <button className="add-row"><Plus size={16} /> Tambah produk lain</button>
-        </section>
-        <aside className="summary-panel">
-          <div className="section-title"><div><h2>Ringkasan biaya</h2><p>Alokasi landed cost otomatis.</p></div><CircleDollarSign size={20} /></div>
-          <dl className="cost-list"><div><dt>Subtotal barang</dt><dd>Rp1.504.000</dd></div><div><dt>Diskon</dt><dd>− Rp75.200</dd></div><div><dt>Pajak</dt><dd>Rp157.168</dd></div><div><dt>Ongkir</dt><dd>Rp45.000</dd></div><div className="total"><dt>Total landed cost</dt><dd>Rp1.630.968</dd></div></dl>
-          <div className="unit-cost"><span>Biaya per unit</span><strong>Rp203.871</strong><small>Rp203,87 per gram</small></div>
-          <div className="summary-note"><PackageCheck size={18} /><span><strong>8 unit baru</strong> akan dibuat dengan berat awal 1.000 gram per unit.</span></div>
-          <button className="button primary full" onClick={() => setFinalized(true)} disabled={finalized}>{finalized ? <><CheckCircle2 size={17} /> 8 label siap diunduh</> : <>Tinjau & finalisasi <ArrowUpRight size={16} /></>}</button>
-          {finalized ? <button className="button secondary full"><Printer size={16} /> Unduh PDF label</button> : null}
-        </aside>
-      </div>
-      {finalized ? <Toast text="Barang masuk RCV-260901-003 berhasil difinalisasi." onClose={() => setFinalized(false)} /> : null}
     </>
   );
 }
