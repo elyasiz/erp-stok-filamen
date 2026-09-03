@@ -712,8 +712,6 @@ button { color: inherit; }
 .login-card p { font-size:1rem; line-height:1.6; margin:0; }
 .login-card small,.login-footer { font-size:.8rem; color:var(--muted); line-height:1.5; }
 .login-footer { margin-top:1.25rem; text-align:center; }
-.google-login { width:100%; min-height:44px; display:flex; justify-content:center; }
-.google-login.is-busy { pointer-events:none; opacity:.5; }
 .login-status { display:flex; align-items:center; justify-content:center; gap:.6rem; }
 .login-feedback { padding:1.2rem; border:1px solid var(--line); border-radius:14px; width:100%; display:flex; align-items:center; flex-direction:column; gap:.85rem; background:#f7faf8; }
 .login-feedback .button { font-size:.875rem; }
@@ -761,3 +759,12 @@ button { color: inherit; }
 .my-usage-detail .section-title h2 { font-size:1.1rem; }
 .account-form input:focus-visible,.account-form select:focus-visible { outline:2px solid #253613; outline-offset:2px; }
 @media(max-width:700px) { .account-role-grid,.my-usage-stats { grid-template-columns:1fr; } .account-role-grid { gap:.6rem; } .account-role-grid article { padding:1rem; } .login-card { padding:1.75rem 1.1rem; } .account-activity-head { flex-wrap:wrap; } .account-activity-head time { width:100%; margin-left:0; } .accounts-view .module-heading { align-items:stretch; } .account-profile { padding:1.4rem; } }
+
+.login-form,.password-change-form { width:100%; text-align:left; }
+.password-input { display:flex; align-items:center; position:relative; min-width:0; }
+.password-input input { padding-right:3rem; }
+.password-input .icon-button { position:absolute; right:4px; background:transparent; border:0; }
+.login-help { border:0; background:transparent; color:var(--ink); text-decoration:underline; font-size:.875rem; cursor:pointer; padding:.5rem; }
+.login-form .button { justify-content:center; min-height:46px; }
+.password-change-form { margin-bottom:1.5rem; }
+.account-profile h2 { font-size:1.1rem; text-align:left; margin-top:1.6rem; }

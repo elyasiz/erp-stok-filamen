@@ -9,6 +9,7 @@ import DashboardView from "@/components/dashboard-view";
 import { useReports, type ReportState } from "@/components/report-state";
 import { AuthProvider, useAuth } from "@/components/auth-provider";
 import LoginView from "@/components/login-view";
+import { PasswordChangeScreen } from "@/components/password-form";
 import { initials, ProfileView } from "@/components/accounts-view";
 import MyUsageView from "@/components/my-usage-view";
 import { isStaff, roleLabels } from "@/lib/account-types";
@@ -164,6 +165,6 @@ function Workspace() {
 
 function AuthenticatedApp() {
   const { user } = useAuth();
-  return user ? <Workspace key={`${user.id}-${user.role}`} /> : <LoginView />;
+  return user ? user.mustChangePassword ? <PasswordChangeScreen /> : <Workspace key={`${user.id}-${user.role}`} /> : <LoginView />;
 }
 export default function Home() { return <AuthProvider><AuthenticatedApp /></AuthProvider>; }

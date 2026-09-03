@@ -3,7 +3,7 @@ export type UserRole = (typeof roles)[number];
 export const roleLabels: Record<UserRole, string> = { OWNER: "Owner / Super Admin", ADMIN: "Admin Stok", COACH: "Coach / Operator" };
 export type AppUser = {
   id: string; name: string; email: string; role: UserRole; status: "ACTIVE" | "DISABLED";
-  avatarUrl: string | null; lastLoginAt: string | null; createdAt: string; linked: boolean;
+  avatarUrl: string | null; lastLoginAt: string | null; createdAt: string; mustChangePassword: boolean;
 };
 export type Actor = Pick<AppUser, "id" | "name" | "role">;
 export const isStaff = (user: Pick<AppUser, "role">) => user.role === "OWNER" || user.role === "ADMIN";
