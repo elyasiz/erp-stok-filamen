@@ -1,4 +1,4 @@
-import { createUsageSession, listActiveUsageSessions, parseUsageInput } from "@/lib/usage-db";
+import { createUsageSession, findActiveUsageByBarcode, listActiveUsageSessions, parseUsageInput } from "@/lib/usage-db";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +10,13 @@ function errorResponse(error: unknown) {
   return Response.json({ message }, { status: 400 });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const barcode = new URL(request.url).searchParams.get("barcode");
+    if (barcode !== null) {
+      const session = await findActiveUsageByBarcode(barcode);
+      return session ? Response.json({ session }) : Response.json({ message: "Barcode ini tidak terdaftar pada sesi penggunaan aktif." }, { status: 404 });
+    }
     return Response.json({ sessions: await listActiveUsageSessions() });
   } catch (error) {
     return errorResponse(error);
@@ -26,4 +31,3 @@ export async function POST(request: Request) {
     return errorResponse(error);
   }
 }
-

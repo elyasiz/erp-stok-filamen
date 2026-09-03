@@ -30,6 +30,7 @@ import {
 import JsBarcode from "jsbarcode";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReceiptView, { CameraBarcodeScanner } from "./receipt-view";
+import CompleteUsageView from "./complete-usage-view";
 
 export type ViewId =
   | "dashboard"
@@ -42,6 +43,8 @@ export type ViewId =
   | "history"
   | "users"
   | "settings";
+
+type NavigateView = (view: ViewId, sessionId?: string) => void;
 
 const ledger = [
   { time: "01 Sep · 10:42", code: "FLM-2608-0128", type: "Penggunaan", ref: "USE-260901-008", change: "−184,50 g", before: "812,00 g", after: "627,50 g", user: "Operator Demo 4" },
@@ -494,7 +497,7 @@ function elapsedSince(value: string) {
   return rest ? `${hours}j ${rest}m` : `${hours} jam`;
 }
 
-function ActiveUsageView({ onNavigate }: { onNavigate: (view: ViewId) => void }) {
+function ActiveUsageView({ onNavigate }: { onNavigate: NavigateView }) {
   const [sessions, setSessions] = useState<UsageSessionSummary[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -531,42 +534,11 @@ function ActiveUsageView({ onNavigate }: { onNavigate: (view: ViewId) => void })
     <>
       <ModuleHeading eyebrow="PENGGUNAAN" title="Penggunaan aktif" description="Sesi yang sudah dikonfirmasi dan unit yang sedang berada di luar penyimpanan."><button className="button primary" onClick={() => onNavigate("usage-start")}><Plus size={17} /> Mulai penggunaan</button></ModuleHeading>
       <section className="module-stats"><article><span>Sesi aktif</span><strong>{sessions.length}</strong><small>{unitTotal} unit filamen</small></article><article><span>Kelas</span><strong>{classSessions.length}</strong><small>{classSessions.reduce((sum, session) => sum + session.unitCount, 0)} unit</small></article><article><span>Trial Print</span><strong>{trialSessions.length}</strong><small>{trialSessions.reduce((sum, session) => sum + session.unitCount, 0)} unit</small></article><article><span>Sample</span><strong>{sampleSessions.length}</strong><small>{sampleSessions.reduce((sum, session) => sum + session.unitCount, 0)} unit</small></article></section>
-      <section className="data-panel"><div className="toolbar"><label className="table-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari nomor penggunaan atau pengguna..." /></label><button className="mini-button" onClick={() => void loadSessions()} disabled={loading}>{loading ? <LoaderCircle className="spin" size={15} /> : null} Muat ulang</button></div>{loadError ? <div className="inventory-load-error"><AlertCircle size={24} /><div><strong>Data belum dapat dimuat</strong><span>{loadError}</span></div><button className="mini-button" onClick={() => void loadSessions()}>Coba lagi</button></div> : <div className="table-wrap"><table className="data-table"><thead><tr><th>Nomor penggunaan</th><th>Pengambil</th><th>Jenis</th><th>Mulai</th><th>Unit</th><th>Durasi</th><th>Status</th></tr></thead><tbody>{loading ? <tr><td colSpan={7}><div className="inventory-empty"><LoaderCircle className="spin" size={26} /><strong>Memuat penggunaan aktif...</strong></div></td></tr> : visibleSessions.length ? visibleSessions.map((session) => <tr key={session.id}><td><strong className="cell-main">{session.number}</strong></td><td>{session.userName}</td><td>{usageTypeLabel(session)}</td><td>{new Date(session.startedAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}</td><td>{session.unitCount} unit</td><td>{elapsedSince(session.startedAt)}</td><td><Status>Aktif</Status></td></tr>) : <tr><td colSpan={7}><div className="inventory-empty"><span><ScanBarcode size={25} /></span><strong>{query ? "Penggunaan tidak ditemukan" : "Belum ada penggunaan aktif"}</strong><p>{query ? "Coba kata pencarian lain." : "Sesi yang dikonfirmasi dari menu Mulai Penggunaan akan tampil di sini."}</p></div></td></tr>}</tbody></table></div>}</section>
+      <section className="data-panel"><div className="toolbar"><label className="table-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari nomor penggunaan atau pengguna..." /></label><button className="mini-button" onClick={() => void loadSessions()} disabled={loading}>{loading ? <LoaderCircle className="spin" size={15} /> : null} Muat ulang</button></div>{loadError ? <div className="inventory-load-error"><AlertCircle size={24} /><div><strong>Data belum dapat dimuat</strong><span>{loadError}</span></div><button className="mini-button" onClick={() => void loadSessions()}>Coba lagi</button></div> : <div className="table-wrap"><table className="data-table"><thead><tr><th>Nomor penggunaan</th><th>Pengambil</th><th>Jenis</th><th>Mulai</th><th>Unit</th><th>Durasi</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{loading ? <tr><td colSpan={8}><div className="inventory-empty"><LoaderCircle className="spin" size={26} /><strong>Memuat penggunaan aktif...</strong></div></td></tr> : visibleSessions.length ? visibleSessions.map((session) => <tr key={session.id}><td><strong className="cell-main">{session.number}</strong></td><td>{session.userName}</td><td>{usageTypeLabel(session)}</td><td>{new Date(session.startedAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}</td><td>{session.unitCount} unit</td><td>{elapsedSince(session.startedAt)}</td><td><Status>Aktif</Status></td><td><button className="mini-button" onClick={() => onNavigate("usage-complete", session.id)}><ClipboardCheck size={14} /> Selesaikan</button></td></tr>) : <tr><td colSpan={8}><div className="inventory-empty"><span><ScanBarcode size={25} /></span><strong>{query ? "Penggunaan tidak ditemukan" : "Belum ada penggunaan aktif"}</strong><p>{query ? "Coba kata pencarian lain." : "Sesi yang dikonfirmasi dari menu Mulai Penggunaan akan tampil di sini."}</p></div></td></tr>}</tbody></table></div>}</section>
     </>
   );
 }
 
-function CompleteUsageView() {
-  const [usedA, setUsedA] = useState(124.5);
-  const [usedB, setUsedB] = useState(0);
-  const [done, setDone] = useState(false);
-  const total = usedA + usedB;
-  return (
-    <>
-      <ModuleHeading eyebrow="PENGGUNAAN · CHECK-IN" title="Selesaikan penggunaan" description="Scan ulang seluruh unit, lalu masukkan hasil slicing." />
-      <div className="complete-search"><ScanBarcode size={24} /><span><strong>Cari sesi dari barcode pertama</strong><small>Scanner siap menerima input</small></span><input defaultValue="FLM-2608-0148" /><button>Cari sesi</button></div>
-      <div className="complete-grid">
-        <section className="form-panel">
-          <div className="session-banner"><span><small>SESI DITEMUKAN</small><strong>USE-260901-011</strong></span><span><small>PENGAMBIL</small><strong>Operator Demo 2</strong></span><span><small>TUJUAN</small><strong>Trial Print</strong></span><Status>Aktif</Status></div>
-          <div className="section-title"><div><h2>Scan ulang & input gram</h2><p>Semua unit wajib terverifikasi sebelum finalisasi.</p></div><span className="verified"><CheckCircle2 size={16} /> 2/2 terverifikasi</span></div>
-          <div className="return-list">
-            <div className="return-item"><CheckCircle2 className="check" size={20} /><span><strong>Bambu Lab PLA Basic</strong><small>FLM-2608-0148 · Matte Black</small></span><label><small>Saldo sebelum</small><strong>812,00 g</strong></label><label><small>Gram digunakan</small><input type="number" min="0" max="812" step="0.01" value={usedA} onChange={(event) => setUsedA(Number(event.target.value))} /></label><label><small>Sisa setelah</small><strong>{(812 - usedA).toLocaleString("id-ID")} g</strong></label></div>
-            <div className="return-item"><CheckCircle2 className="check" size={20} /><span><strong>Polymaker PolyLite</strong><small>FLM-2607-0204 · Army Green</small></span><label><small>Saldo sebelum</small><strong>672,00 g</strong></label><label><small>Gram digunakan</small><input type="number" min="0" max="672" step="0.01" value={usedB} onChange={(event) => setUsedB(Number(event.target.value))} /></label><label><small>Sisa setelah</small><strong>{(672 - usedB).toLocaleString("id-ID")} g</strong></label></div>
-          </div>
-        </section>
-        <aside className="summary-panel">
-          <div className="section-title"><div><h2>Hasil pekerjaan</h2><p>Data final sesi penggunaan.</p></div><ClipboardCheck size={20} /></div>
-          <label className="stack-field"><span>Hasil</span><select defaultValue="SUCCESS"><option value="SUCCESS">Berhasil</option><option value="PARTIAL">Sebagian</option><option value="FAILED">Gagal</option><option value="CANCELLED">Dibatalkan</option></select></label>
-          <label className="stack-field"><span>Catatan (opsional)</span><textarea placeholder="Catatan hasil print..." /></label>
-          <dl className="cost-list"><div><dt>Total digunakan</dt><dd>{total.toLocaleString("id-ID")} g</dd></div><div><dt>Biaya penggunaan</dt><dd>Rp{Math.round(total * 203.87).toLocaleString("id-ID")}</dd></div><div><dt>Unit kembali tersedia</dt><dd>2 unit</dd></div></dl>
-          <div className="summary-note safe"><ShieldCheck size={18} /><span>Finalisasi bersifat atomic dan aman dari pengurangan ganda.</span></div>
-          <button className="button primary full" disabled={done} onClick={() => setDone(true)}>{done ? <><CheckCircle2 size={17} /> Sesi selesai</> : <><ClipboardCheck size={17} /> Finalisasi penggunaan</>}</button>
-        </aside>
-      </div>
-      {done ? <Toast text="Penggunaan selesai. Ledger dan audit log berhasil dibuat." onClose={() => setDone(false)} /> : null}
-    </>
-  );
-}
 
 function ReportsView({ ledgerOnly = false }: { ledgerOnly?: boolean }) {
   const downloadCsv = (type: string) => {
@@ -599,15 +571,14 @@ function SettingsView() {
   return <><ModuleHeading eyebrow="ADMINISTRATION" title="Pengaturan sistem" description="Konfigurasi lokasi, label, dan batas stok."><button className="button primary"><Check size={17} /> Simpan perubahan</button></ModuleHeading><div className="settings-grid"><section className="form-panel"><div className="section-title"><div><h2>Aturan inventory</h2><p>Berlaku untuk seluruh unit filamen.</p></div><SlidersHorizontal size={20} /></div><div className="form-grid"><label><span>Batas hampir habis (gram)</span><input type="number" defaultValue="500" /></label><label><span>Berat nominal unit (gram)</span><input type="number" defaultValue="1000" disabled /></label><label><span>Lokasi default</span><select><option>Gudang Filamen Utama</option></select></label><label><span>Zona waktu</span><select><option>Asia/Jakarta (WIB)</option></select></label></div></section><section className="form-panel"><div className="section-title"><div><h2>Format label</h2><p>Default untuk PDF barcode Code 128.</p></div><Printer size={20} /></div><div className="label-preview"><Barcode size={80} strokeWidth={1} /><strong>FLM-2609-0018</strong><small>Bambu Lab PLA Basic · Matte Black</small></div><div className="form-grid"><label><span>Ukuran kertas</span><select><option>A4 · 24 label</option><option>A4 · 40 label</option></select></label><label><span>Tipe barcode</span><select disabled><option>Code 128</option></select></label></div></section></div></>;
 }
 
-export function ModuleView({ view, onNavigate }: { view: ViewId; onNavigate: (view: ViewId) => void }) {
+export function ModuleView({ view, onNavigate, usageSessionId }: { view: ViewId; onNavigate: NavigateView; usageSessionId: string | null }) {
   if (view === "inventory") return <InventoryView />;
   if (view === "receipt") return <ReceiptView />;
   if (view === "usage-start") return <UsageStartView onNavigate={onNavigate} />;
   if (view === "usage-active") return <ActiveUsageView onNavigate={onNavigate} />;
-  if (view === "usage-complete") return <CompleteUsageView />;
+  if (view === "usage-complete") return <CompleteUsageView key={usageSessionId ?? "choose-session"} initialSessionId={usageSessionId} onOpenActive={() => onNavigate("usage-active")} />;
   if (view === "reports") return <ReportsView />;
   if (view === "history") return <ReportsView ledgerOnly />;
   if (view === "users") return <UsersView />;
   return <SettingsView />;
 }
-

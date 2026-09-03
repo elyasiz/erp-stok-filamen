@@ -225,8 +225,10 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [view, setView] = useState<ViewId>("dashboard");
-  const selectView = (nextView: ViewId) => {
+  const [usageSessionId, setUsageSessionId] = useState<string | null>(null);
+  const selectView = (nextView: ViewId, sessionId?: string) => {
     setView(nextView);
+    setUsageSessionId(sessionId ?? null);
     setMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -370,7 +372,7 @@ export default function Home() {
               </div>
             </section>
           </div>
-          </> : <ModuleView view={view} onNavigate={selectView} />}
+          </> : <ModuleView view={view} onNavigate={selectView} usageSessionId={usageSessionId} />}
         </main>
       </div>
 
@@ -379,4 +381,3 @@ export default function Home() {
     </div>
   );
 }
-
