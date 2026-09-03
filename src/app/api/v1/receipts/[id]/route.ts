@@ -1,8 +1,10 @@
 import { deleteReceipt, getReceipt, parseReceiptInput, updateReceipt } from "@/lib/receipts-db";
+import { requireUser, accessErrorResponse } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 function errorResponse(error: unknown) {
+  const denied = accessErrorResponse(error); if (denied) return denied;
   const message = error instanceof Error ? error.message : "Terjadi kesalahan pada server.";
   if (message === "DATABASE_NOT_CONFIGURED") return Response.json({ message: "Database belum terhubung." }, { status: 503 });
   if (message.includes("duplicate key")) return Response.json({ message: "Nomor penerimaan atau kode unit sudah digunakan." }, { status: 409 });
@@ -11,6 +13,7 @@ function errorResponse(error: unknown) {
 
 export async function GET(_request: Request, context: RouteContext<"/api/v1/receipts/[id]">) {
   try {
+    await requireUser(_request, ["OWNER", "ADMIN"]);
     const { id } = await context.params;
     const receipt = await getReceipt(id);
     return receipt ? Response.json({ receipt }) : Response.json({ message: "Penerimaan tidak ditemukan." }, { status: 404 });
@@ -21,8 +24,9 @@ export async function GET(_request: Request, context: RouteContext<"/api/v1/rece
 
 export async function PATCH(request: Request, context: RouteContext<"/api/v1/receipts/[id]">) {
   try {
+    const actor = await requireUser(request, ["OWNER", "ADMIN"]);
     const { id } = await context.params;
-    const receipt = await updateReceipt(id, parseReceiptInput(await request.json()));
+    const receipt = await updateReceipt(id, parseReceiptInput(await request.json()), actor);
     return receipt ? Response.json({ receipt }) : Response.json({ message: "Penerimaan tidak ditemukan." }, { status: 404 });
   } catch (error) {
     return errorResponse(error);
@@ -31,12 +35,12 @@ export async function PATCH(request: Request, context: RouteContext<"/api/v1/rec
 
 export async function DELETE(_request: Request, context: RouteContext<"/api/v1/receipts/[id]">) {
   try {
+    const actor = await requireUser(_request, ["OWNER", "ADMIN"]);
     const { id } = await context.params;
-    return (await deleteReceipt(id))
+    return (await deleteReceipt(id, actor))
       ? Response.json({ success: true })
       : Response.json({ message: "Penerimaan tidak ditemukan." }, { status: 404 });
   } catch (error) {
     return errorResponse(error);
   }
 }
-

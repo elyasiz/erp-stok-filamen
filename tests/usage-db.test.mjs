@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 import { randomUUID } from "node:crypto";
 import ts from "typescript";
@@ -25,6 +26,12 @@ before(async () => {
     require: (name) => {
       if (name === "server-only") return {};
       if (name === "@neondatabase/serverless") return { neon: () => sql };
+      if (name === "./audit-db") {
+        const audit = { exports: {} };
+        const source = ts.transpileModule(readFileSync(resolve("src/lib/audit-db.ts"), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+        runInNewContext(source, { exports: audit.exports, require: dependency => dependency === "server-only" ? {} : { neon: () => sql }, process: { env: { DATABASE_URL: "in-memory-test-only" } }, Date });
+        return audit.exports;
+      }
       throw new Error(`Unexpected dependency: ${name}`);
     },
     process: { env: { DATABASE_URL: "in-memory-test-only" } },

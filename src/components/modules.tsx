@@ -19,7 +19,6 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Trash2,
-  Users,
   X,
 } from "lucide-react";
 import JsBarcode from "jsbarcode";
@@ -28,6 +27,9 @@ import ReceiptView, { CameraBarcodeScanner } from "./receipt-view";
 import CompleteUsageView from "./complete-usage-view";
 import ReportsView from "./reports-view";
 import type { ReportState } from "./report-state";
+import { useAuth } from "./auth-provider";
+import { AccountsView, ActivityView } from "./accounts-view";
+import { isStaff } from "@/lib/account-types";
 
 export type ViewId =
   | "dashboard"
@@ -39,6 +41,9 @@ export type ViewId =
   | "reports"
   | "history"
   | "users"
+  | "activity"
+  | "my-usage"
+  | "profile"
   | "settings";
 
 type NavigateView = (view: ViewId, sessionId?: string) => void;
@@ -79,7 +84,7 @@ type InventoryItem = {
   updatedAt: string;
 };
 
-type InventoryFormData = Omit<InventoryItem, "id" | "createdAt" | "updatedAt">;
+type InventoryFormData = Omit<InventoryItem, "id" | "createdAt" | "updatedAt"> & { reason?: string };
 
 type UsageSessionSummary = {
   id: string;
@@ -156,7 +161,7 @@ function InventoryForm({ value, saving, error, onChange, onCancel, onSubmit }: {
         <label><span>Sisa gram *</span><input required type="number" min="0" max="100000" step="0.01" value={value.remainingGrams} onChange={(event) => onChange({ ...value, remainingGrams: Number(event.target.value) })} /></label>
         <label><span>Status *</span><select value={value.status} onChange={(event) => onChange({ ...value, status: event.target.value as InventoryStatusCode })}>{Object.entries(inventoryStatusLabels).map(([status, label]) => <option value={status} key={status}>{label}</option>)}</select></label>
         <label><span>Harga unit *</span><input required type="number" min="0" step="1" value={value.unitCost} onChange={(event) => onChange({ ...value, unitCost: Number(event.target.value) })} /></label>
-        <label className="full-field"><span>Supplier *</span><input required maxLength={120} value={value.supplier} onChange={(event) => onChange({ ...value, supplier: event.target.value })} placeholder="Nama supplier" /></label>
+        {value.reason !== undefined ? <label className="full-field"><span>Alasan perubahan *</span><input required minLength={3} maxLength={500} value={value.reason} onChange={event => onChange({ ...value, reason: event.target.value })} placeholder="Contoh: koreksi hasil penimbangan" /></label> : null}<label className="full-field"><span>Supplier *</span><input required maxLength={120} value={value.supplier} onChange={(event) => onChange({ ...value, supplier: event.target.value })} placeholder="Nama supplier" /></label>
       </div>
       {error ? <div className="inventory-form-error" role="alert"><AlertCircle size={16} />{error}</div> : null}
       <div className="dialog-actions"><button className="button secondary" type="button" onClick={onCancel} disabled={saving}>Batal</button><button className="button primary" type="submit" disabled={saving}>{saving ? <><LoaderCircle className="spin" size={16} /> Menyimpan...</> : <><Check size={16} /> Simpan data</>}</button></div>
@@ -221,6 +226,8 @@ function PrintableBarcodeLabel({ item }: { item: InventoryItem }) {
 }
 
 function InventoryView() {
+  const { user } = useAuth();
+  const canManage = Boolean(user && isStaff(user));
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [query, setQuery] = useState("");
   const [material, setMaterial] = useState("ALL");
@@ -270,7 +277,7 @@ function InventoryView() {
   const openCreate = () => { setForm(emptyInventoryForm); setSelected(null); setFormError(""); setMode("create"); };
   const openEdit = (item: InventoryItem) => {
     setSelected(item);
-    setForm({ code: item.code, product: item.product, material: item.material, color: item.color, packagingType: item.packagingType, remainingGrams: item.remainingGrams, status: item.status, unitCost: item.unitCost, supplier: item.supplier });
+    setForm({ code: item.code, product: item.product, material: item.material, color: item.color, packagingType: item.packagingType, remainingGrams: item.remainingGrams, status: item.status, unitCost: item.unitCost, supplier: item.supplier, reason: "" });
     setFormError("");
     setMode("edit");
   };
@@ -311,7 +318,7 @@ function InventoryView() {
     setSaving(true);
     setFormError("");
     try {
-      const response = await fetch(`/api/v1/inventory/${selected.id}`, { method: "DELETE" });
+      const response = await fetch(`/api/v1/inventory/${selected.id}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: form.reason ?? "" }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message ?? "Data gagal dihapus.");
       const code = selected.code;
@@ -329,7 +336,7 @@ function InventoryView() {
     <>
       <ModuleHeading eyebrow="INVENTORY" title="Stok filamen" description="Kelola setiap spool dan refill hingga gram terakhir.">
         <button className="button secondary" onClick={() => void loadItems()} disabled={loading}><LoaderCircle className={loading ? "spin" : ""} size={17} /> Muat ulang</button>
-        <button className="button primary" onClick={openCreate}><Plus size={17} /> Tambah filamen</button>
+        {canManage ? <button className="button primary" onClick={openCreate}><Plus size={17} /> Tambah filamen</button> : null}
       </ModuleHeading>
       <section className="module-stats compact-stats">
         <article><span>Total unit</span><strong>{items.length}</strong><small>{(totalGrams / 1000).toLocaleString("id-ID", { maximumFractionDigits: 2 })} kg tersisa</small></article>
@@ -348,16 +355,16 @@ function InventoryView() {
         {loadError ? <div className="inventory-load-error"><AlertCircle size={21} /><div><strong>Stok belum dapat dimuat</strong><span>{loadError}</span></div><button className="button secondary" onClick={() => void loadItems()}>Coba lagi</button></div> : null}
         {!loadError ? <div className="table-wrap">
           <table className="data-table inventory-table">
-            <thead><tr><th>Unit filamen</th><th>Material / Kemasan</th><th>Sisa</th><th>Status</th><th>Harga unit</th><th>Supplier</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>Unit filamen</th><th>Material / Kemasan</th><th>Sisa</th><th>Status</th>{canManage ? <th>Harga unit</th> : null}<th>Supplier</th><th>Aksi</th></tr></thead>
             <tbody>
               {loading ? <tr><td colSpan={7}><div className="inventory-empty"><LoaderCircle className="spin" size={28} /><strong>Memuat stok...</strong></div></td></tr> : null}
-              {!loading && !filtered.length ? <tr><td colSpan={7}><div className="inventory-empty"><span><PackageOpen size={30} /></span><strong>{items.length ? "Tidak ada hasil yang cocok" : "Belum ada data stok filamen"}</strong><p>{items.length ? "Ubah kata pencarian atau filter." : "Tambahkan unit filamen pertama untuk memulai inventory."}</p>{!items.length ? <button className="button primary" onClick={openCreate}><Plus size={16} /> Tambah filamen pertama</button> : null}</div></td></tr> : null}
+              {!loading && !filtered.length ? <tr><td colSpan={7}><div className="inventory-empty"><span><PackageOpen size={30} /></span><strong>{items.length ? "Tidak ada hasil yang cocok" : "Belum ada data stok filamen"}</strong><p>{items.length ? "Ubah kata pencarian atau filter." : "Tambahkan unit filamen pertama untuk memulai inventory."}</p>{!items.length && canManage ? <button className="button primary" onClick={openCreate}><Plus size={16} /> Tambah filamen pertama</button> : null}</div></td></tr> : null}
               {!loading && filtered.map((item) => <tr key={item.id}>
                 <td><div className="product-cell"><span className="product-token"><Barcode size={17} /></span><span><strong>{item.product}</strong><small>{item.code} · {item.color}</small></span></div></td>
                 <td><strong className="cell-main">{item.material}</strong><small className="cell-sub">{item.packagingType === "WITH_SPOOL" ? "With Spool" : "Refill"}</small></td>
                 <td><div className="weight-cell"><strong>{item.remainingGrams.toLocaleString("id-ID")} g</strong><div><i style={{ width: `${Math.min(100, item.remainingGrams / 10)}%` }} /></div></div></td>
-                <td><Status>{inventoryStatusLabels[item.status]}</Status></td><td>{rupiah.format(item.unitCost)}</td><td>{item.supplier}</td>
-                <td><div className="row-actions"><button className="table-action" onClick={() => { setSelected(item); setMode("view"); }} aria-label={`Lihat ${item.code}`} title="Lihat"><Eye size={15} /></button><button className="table-action" onClick={() => openLabel(item)} aria-label={`Cetak label ${item.code}`} title="Cetak label"><Printer size={15} /></button><button className="table-action" onClick={() => openEdit(item)} aria-label={`Ubah ${item.code}`} title="Ubah"><Pencil size={15} /></button><button className="table-action danger" onClick={() => { setSelected(item); setFormError(""); setMode("delete"); }} aria-label={`Hapus ${item.code}`} title="Hapus"><Trash2 size={15} /></button></div></td>
+                <td><Status>{inventoryStatusLabels[item.status]}</Status></td>{canManage ? <td>{rupiah.format(item.unitCost)}</td> : null}<td>{item.supplier}</td>
+                <td><div className="row-actions"><button className="table-action" onClick={() => { setSelected(item); setMode("view"); }} aria-label={`Lihat ${item.code}`} title="Lihat"><Eye size={15} /></button><button className="table-action" onClick={() => openLabel(item)} aria-label={`Cetak label ${item.code}`} title="Cetak label"><Printer size={15} /></button>{canManage ? <button className="table-action" onClick={() => openEdit(item)} aria-label={`Ubah ${item.code}`} title="Ubah"><Pencil size={15} /></button> : null}{canManage ? <button className="table-action danger" onClick={() => { setSelected(item); setFormError(""); setMode("delete"); }} aria-label={`Hapus ${item.code}`} title="Hapus"><Trash2 size={15} /></button> : null}</div></td>
               </tr>)}
             </tbody>
           </table>
@@ -366,16 +373,26 @@ function InventoryView() {
       </section>
 
       {mode === "create" || mode === "edit" ? <InventoryDialog eyebrow={mode === "create" ? "UNIT BARU" : "PERBARUI UNIT"} title={mode === "create" ? "Tambah stok filamen" : `Ubah ${selected?.code ?? "filamen"}`} onClose={closeDialog}><InventoryForm value={form} saving={saving} error={formError} onChange={setForm} onCancel={closeDialog} onSubmit={() => void saveItem()} /></InventoryDialog> : null}
-      {mode === "view" && selected ? <InventoryDialog eyebrow="DETAIL UNIT" title={selected.code} onClose={closeDialog}><div className="inventory-detail"><div className="detail-hero"><span className="product-token"><Barcode size={22} /></span><div><strong>{selected.product}</strong><small>{selected.material} · {selected.color}</small></div><Status>{inventoryStatusLabels[selected.status]}</Status></div><dl><div><dt>Kemasan</dt><dd>{selected.packagingType === "WITH_SPOOL" ? "With Spool" : "Refill"}</dd></div><div><dt>Sisa stok</dt><dd>{selected.remainingGrams.toLocaleString("id-ID")} gram</dd></div><div><dt>Harga unit</dt><dd>{rupiah.format(selected.unitCost)}</dd></div><div><dt>Supplier</dt><dd>{selected.supplier}</dd></div><div><dt>Terakhir diubah</dt><dd>{new Date(selected.updatedAt).toLocaleString("id-ID")}</dd></div></dl></div><div className="dialog-actions"><button className="button secondary danger-button" onClick={() => setMode("delete")}><Trash2 size={16} /> Hapus</button><button className="button secondary" onClick={() => openLabel(selected)}><Printer size={16} /> Cetak label</button><button className="button primary" onClick={() => openEdit(selected)}><Pencil size={16} /> Ubah data</button></div></InventoryDialog> : null}
+      {mode === "view" && selected ? <InventoryDialog eyebrow="DETAIL UNIT" title={selected.code} onClose={closeDialog}><div className="inventory-detail"><div className="detail-hero"><span className="product-token"><Barcode size={22} /></span><div><strong>{selected.product}</strong><small>{selected.material} · {selected.color}</small></div><Status>{inventoryStatusLabels[selected.status]}</Status></div><dl><div><dt>Kemasan</dt><dd>{selected.packagingType === "WITH_SPOOL" ? "With Spool" : "Refill"}</dd></div><div><dt>Sisa stok</dt><dd>{selected.remainingGrams.toLocaleString("id-ID")} gram</dd></div>{canManage ? <div><dt>Harga unit</dt><dd>{rupiah.format(selected.unitCost)}</dd></div> : null}<div><dt>Supplier</dt><dd>{selected.supplier}</dd></div><div><dt>Terakhir diubah</dt><dd>{new Date(selected.updatedAt).toLocaleString("id-ID")}</dd></div></dl></div><div className="dialog-actions">{canManage ? <button className="button secondary danger-button" onClick={() => setMode("delete")}><Trash2 size={16} /> Hapus</button> : null}<button className="button secondary" onClick={() => openLabel(selected)}><Printer size={16} /> Cetak label</button>{canManage ? <button className="button primary" onClick={() => openEdit(selected)}><Pencil size={16} /> Ubah data</button> : null}</div></InventoryDialog> : null}
       {mode === "label" && selected ? <InventoryDialog eyebrow="LABEL SIAP CETAK" title={selected.code} onClose={closeDialog}><div className="label-ready-note"><CheckCircle2 size={18} /><div><strong>Barcode Code 128 sudah dibuat.</strong><span>Gunakan kertas label 100 × 50 mm, lalu pilih skala 100% pada pengaturan printer.</span></div></div><PrintableBarcodeLabel item={selected} /><div className="dialog-actions"><button className="button secondary" onClick={closeDialog}>Selesai</button><button className="button primary" onClick={() => window.print()}><Printer size={16} /> Cetak label</button></div></InventoryDialog> : null}
-      {mode === "delete" && selected ? <InventoryDialog eyebrow="KONFIRMASI" title={`Hapus ${selected.code}?`} onClose={closeDialog}><div className="delete-copy"><span><Trash2 size={22} /></span><div><strong>Data akan dihapus permanen.</strong><p>Unit {selected.product} tidak akan tampil lagi di stok filamen.</p></div></div>{formError ? <div className="inventory-form-error" role="alert"><AlertCircle size={16} />{formError}</div> : null}<div className="dialog-actions"><button className="button secondary" onClick={closeDialog} disabled={saving}>Batal</button><button className="button danger-button solid" onClick={() => void deleteItem()} disabled={saving}>{saving ? <><LoaderCircle className="spin" size={16} /> Menghapus...</> : <><Trash2 size={16} /> Hapus permanen</>}</button></div></InventoryDialog> : null}
+      {mode === "delete" && selected ? <InventoryDialog eyebrow="KONFIRMASI" title={`Hapus ${selected.code}?`} onClose={closeDialog}><label className="stack-field"><span>Alasan penghapusan *</span><input required minLength={3} maxLength={500} value={form.reason ?? ""} onChange={event => setForm({ ...form, reason: event.target.value })} placeholder="Jelaskan alasan penghapusan" /></label><div className="delete-copy"><span><Trash2 size={22} /></span><div><strong>Data akan dihapus permanen.</strong><p>Unit {selected.product} tidak akan tampil lagi di stok filamen.</p></div></div>{formError ? <div className="inventory-form-error" role="alert"><AlertCircle size={16} />{formError}</div> : null}<div className="dialog-actions"><button className="button secondary" onClick={closeDialog} disabled={saving}>Batal</button><button className="button danger-button solid" onClick={() => void deleteItem()} disabled={saving}>{saving ? <><LoaderCircle className="spin" size={16} /> Menghapus...</> : <><Trash2 size={16} /> Hapus permanen</>}</button></div></InventoryDialog> : null}
       {toast ? <Toast text={toast} onClose={() => setToast("")} /> : null}
     </>
   );
 }
 
 function UsageStartView({ onNavigate }: { onNavigate: (view: ViewId) => void }) {
-  const [userName, setUserName] = useState("");
+  const { user } = useAuth();
+  const [borrowerUserId, setBorrowerUserId] = useState(user?.id ?? "");
+  const [borrowers, setBorrowers] = useState<Array<{ id: string; name: string }>>(user ? [{ id: user.id, name: user.name }] : []);
+  const [activityName, setActivityName] = useState("");
+  const userName = borrowers.find(person => person.id === borrowerUserId)?.name ?? user?.name ?? "";
+  useEffect(() => {
+    if (!user || !isStaff(user)) return;
+    const controller = new AbortController();
+    fetch("/api/v1/users", { cache: "no-store", signal: controller.signal }).then(async response => { const body = await response.json(); if (!response.ok) throw new Error(body.message); setBorrowers(body.users.filter((person: { status?: string }) => !person.status || person.status === "ACTIVE")); }).catch(() => { /* The signed-in account remains available if the team list cannot load. */ });
+    return () => controller.abort();
+  }, [user]);
   const [usageType, setUsageType] = useState<"CLASS" | "NON_CLASS">("CLASS");
   const [nonClassType, setNonClassType] = useState<"TRIAL_PRINT" | "SAMPLE">("TRIAL_PRINT");
   const [scanned, setScanned] = useState<InventoryItem[]>([]);
@@ -432,6 +449,8 @@ function UsageStartView({ onNavigate }: { onNavigate: (view: ViewId) => void }) 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userName: cleanName,
+          borrowerUserId,
+          activityName,
           usageType,
           nonClassType: usageType === "NON_CLASS" ? nonClassType : null,
           inventoryItemIds: scanned.map((item) => item.id),
@@ -455,7 +474,9 @@ function UsageStartView({ onNavigate }: { onNavigate: (view: ViewId) => void }) 
           <div className="large-scan-zone usage-scan-zone"><ScanBarcode size={44} /><strong>Scan unit filamen</strong><p>Arahkan kamera ke label unit atau masukkan kode secara manual.</p><button className="usage-camera-button" onClick={() => setCameraOpen(true)}><Camera size={17} /> Buka kamera untuk scan</button><div><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} onKeyDown={(event) => { if (event.key === "Enter") void addUnit(); }} placeholder="FLM-2609-ABC123-01-01" /><button onClick={() => void addUnit()} disabled={lookingUp}>{lookingUp ? <LoaderCircle className="spin" size={15} /> : null} Tambahkan</button></div></div>
           <div className="section-divider" />
           <div className="section-title"><div><h2>2. Identitas & jenis penggunaan</h2><p>Data ini akan tampil pada Penggunaan Aktif dan tersimpan di database.</p></div><ShieldCheck size={20} /></div>
-          <label className="stack-field usage-name-field"><span>Nama pengambil *</span><input required maxLength={120} value={userName} onChange={(event) => { setUserName(event.target.value); setFormError(""); }} placeholder="Masukkan nama pengguna" /></label>
+          <label className="stack-field usage-name-field"><span>Nama pengambil *</span>{user && isStaff(user) ? <select value={borrowerUserId} onChange={event => setBorrowerUserId(event.target.value)}>{borrowers.map(person => <option key={person.id} value={person.id}>{person.name}{person.id === user.id ? " (Anda)" : ""}</option>)}</select> : <input value={userName} readOnly />}</label>
+          <p className="report-note">Dicatat oleh: {user?.name}</p>
+          <label className="stack-field usage-name-field"><span>Nama kelas / kegiatan *</span><input required maxLength={160} value={activityName} onChange={event => setActivityName(event.target.value)} placeholder="Contoh: Workshop 3D Sesi 2 atau Trial keychain" /></label>
           <div className="segmented"><button className={usageType === "CLASS" ? "active" : ""} onClick={() => setUsageType("CLASS")}>Kelas</button><button className={usageType === "NON_CLASS" ? "active" : ""} onClick={() => setUsageType("NON_CLASS")}>Nonkelas</button></div>
           {usageType === "NON_CLASS" ? <div className="inline-field"><label><input type="radio" name="nonclass" checked={nonClassType === "TRIAL_PRINT"} onChange={() => setNonClassType("TRIAL_PRINT")} /> Trial Print</label><label><input type="radio" name="nonclass" checked={nonClassType === "SAMPLE"} onChange={() => setNonClassType("SAMPLE")} /> Sample</label></div> : <div className="info-strip"><CheckCircle2 size={17} /> Penggunaan dicatat sebagai kegiatan Kelas.</div>}
         </section>
@@ -465,7 +486,7 @@ function UsageStartView({ onNavigate }: { onNavigate: (view: ViewId) => void }) 
           <div className="cart-summary"><span>Total estimasi tersedia</span><strong>{scanned.reduce((sum, unit) => sum + unit.remainingGrams, 0).toLocaleString("id-ID")} gram</strong></div>
           {formError ? <div className="inventory-form-error" role="alert"><AlertCircle size={16} />{formError}</div> : null}
           <p className="usage-confirm-note"><ShieldCheck size={15} /> Setelah dikonfirmasi, sesi masuk ke Penggunaan Aktif dan unit berubah menjadi Digunakan.</p>
-          <button className="button primary full" disabled={!scanned.length || userName.trim().length < 2 || saving} onClick={() => void confirmUsage()}>{saving ? <><LoaderCircle className="spin" size={17} /> Menyimpan...</> : <><ScanBarcode size={17} /> Konfirmasi pengambilan</>}</button>
+          <button className="button primary full" disabled={!scanned.length || userName.trim().length < 2 || !activityName.trim() || saving} onClick={() => void confirmUsage()}>{saving ? <><LoaderCircle className="spin" size={17} /> Menyimpan...</> : <><ScanBarcode size={17} /> Konfirmasi pengambilan</>}</button>
         </aside>
       </div>
       {cameraOpen ? <CameraBarcodeScanner contextLabel="PEMINDAI UNIT" onDetected={handleCameraScan} onClose={() => setCameraOpen(false)} /> : null}
@@ -530,11 +551,6 @@ function ActiveUsageView({ onNavigate }: { onNavigate: NavigateView }) {
 }
 
 
-function UsersView() {
-  const people = [{ name: "Admin TIDIGO", email: "admin@example.test", account: "Staff", role: "Super Admin", last: "Hari ini, 10:58" }, { name: "Admin Demo", email: "inventory@example.test", account: "Staff", role: "Admin Inventory", last: "Hari ini, 09:56" }, { name: "Operator Demo 1", email: "operator1@example.test", account: "Coach", role: "Operator", last: "Hari ini, 10:18" }, { name: "Operator Demo 2", email: "operator2@example.test", account: "Coach", role: "Operator", last: "Hari ini, 09:42" }];
-  return <><ModuleHeading eyebrow="ADMINISTRATION" title="Pengguna & role" description="Identitas dari MLS, hak akses dikelola di ERP."><button className="button secondary"><Users size={17} /> Sinkronkan MLS</button></ModuleHeading><section className="access-note"><ShieldCheck size={20} /><span><strong>Akses siswa selalu ditolak.</strong><small>Role dicek di backend pada setiap permintaan.</small></span></section><section className="data-panel"><div className="toolbar"><label className="table-search"><Search size={17} /><input placeholder="Cari nama atau email..." /></label></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Pengguna</th><th>Tipe akun MLS</th><th>Role ERP</th><th>Login terakhir</th><th>Status</th></tr></thead><tbody>{people.map((person) => <tr key={person.email}><td><div className="product-cell"><span className="avatar soft">{person.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><span><strong>{person.name}</strong><small>{person.email}</small></span></div></td><td>{person.account}</td><td><select className="role-select" defaultValue={person.role}><option>Operator</option><option>Admin Inventory</option><option>Supervisor</option><option>Super Admin</option></select></td><td>{person.last}</td><td><Status>Aktif</Status></td></tr>)}</tbody></table></div></section></>;
-}
-
 function SettingsView() {
   return <><ModuleHeading eyebrow="ADMINISTRATION" title="Pengaturan sistem" description="Konfigurasi lokasi, label, dan batas stok."><button className="button primary"><Check size={17} /> Simpan perubahan</button></ModuleHeading><div className="settings-grid"><section className="form-panel"><div className="section-title"><div><h2>Aturan inventory</h2><p>Berlaku untuk seluruh unit filamen.</p></div><SlidersHorizontal size={20} /></div><div className="form-grid"><label><span>Batas hampir habis (gram)</span><input type="number" defaultValue="500" /></label><label><span>Berat nominal unit (gram)</span><input type="number" defaultValue="1000" disabled /></label><label><span>Lokasi default</span><select><option>Gudang Filamen Utama</option></select></label><label><span>Zona waktu</span><select><option>Asia/Jakarta (WIB)</option></select></label></div></section><section className="form-panel"><div className="section-title"><div><h2>Format label</h2><p>Default untuk PDF barcode Code 128.</p></div><Printer size={20} /></div><div className="label-preview"><Barcode size={80} strokeWidth={1} /><strong>FLM-2609-0018</strong><small>Bambu Lab PLA Basic · Matte Black</small></div><div className="form-grid"><label><span>Ukuran kertas</span><select><option>A4 · 24 label</option><option>A4 · 40 label</option></select></label><label><span>Tipe barcode</span><select disabled><option>Code 128</option></select></label></div></section></div></>;
 }
@@ -547,6 +563,7 @@ export function ModuleView({ view, onNavigate, usageSessionId, reports }: { repo
   if (view === "usage-complete") return <CompleteUsageView key={usageSessionId ?? "choose-session"} initialSessionId={usageSessionId} onOpenActive={() => onNavigate("usage-active")} />;
   if (view === "reports") return <ReportsView state={reports} />;
   if (view === "history") return <ReportsView state={reports} ledgerOnly />;
-  if (view === "users") return <UsersView />;
+  if (view === "users") return <AccountsView />;
+  if (view === "activity") return <ActivityView />;
   return <SettingsView />;
 }

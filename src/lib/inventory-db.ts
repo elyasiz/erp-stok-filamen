@@ -1,6 +1,8 @@
 import "server-only";
 
 import { neon } from "@neondatabase/serverless";
+import { ensureAuditSchema } from "./audit-db";
+import type { Actor } from "./account-types";
 
 export const inventoryStatuses = ["AVAILABLE", "IN_USE", "LOW_STOCK", "EMPTY", "DAMAGED", "INACTIVE"] as const;
 export const packagingTypes = ["WITH_SPOOL", "REFILL"] as const;
@@ -131,36 +133,47 @@ export async function getInventoryItem(id: string) {
   return rows[0] ? mapRow(rows[0] as InventoryRow) : null;
 }
 
-export async function createInventoryItem(input: InventoryInput) {
+export async function createInventoryItem(input: InventoryInput, actor: Actor) {
+  await ensureAuditSchema();
   await ensureSchema();
   const sql = getSql();
   const id = crypto.randomUUID();
   const rows = await sql`
-    insert into inventory_items (id, code, product, material, color, packaging_type, remaining_grams, status, unit_cost, supplier)
+    with changed as (insert into inventory_items (id, code, product, material, color, packaging_type, remaining_grams, status, unit_cost, supplier)
     values (${id}, ${input.code}, ${input.product}, ${input.material}, ${input.color}, ${input.packagingType}, ${input.remainingGrams}, ${input.status}, ${input.unitCost}, ${input.supplier})
-    returning *
+    returning *), logged as (
+      insert into audit_events(id,actor_user_id,actor_name,action,entity_type,entity_id,after_data)
+      select ${crypto.randomUUID()},${actor.id},${actor.name},'STOCK_CREATED','inventory',id::text,to_jsonb(changed) from changed returning id
+    ) select changed.* from changed, logged
   `;
   return mapRow(rows[0] as InventoryRow);
 }
 
-export async function updateInventoryItem(id: string, input: InventoryInput) {
+export async function updateInventoryItem(id: string, input: InventoryInput, actor: Actor, reason: string) {
+  await ensureAuditSchema();
   await ensureSchema();
   const sql = getSql();
   const rows = await sql`
-    update inventory_items
+    with previous as (select * from inventory_items where id=${id} for update), changed as (update inventory_items inv
     set code = ${input.code}, product = ${input.product}, material = ${input.material}, color = ${input.color},
         packaging_type = ${input.packagingType}, remaining_grams = ${input.remainingGrams}, status = ${input.status},
         unit_cost = ${input.unitCost}, supplier = ${input.supplier}, updated_at = now()
-    where id = ${id}
-    returning *
+    from previous p where inv.id = p.id and p.status <> 'IN_USE'
+    returning inv.*), logged as (
+      insert into audit_events(id,actor_user_id,actor_name,action,entity_type,entity_id,reason,before_data,after_data)
+      select ${crypto.randomUUID()},${actor.id},${actor.name},'STOCK_UPDATED','inventory',c.id::text,${reason},to_jsonb(p),to_jsonb(c) from changed c, previous p returning id
+    ) select changed.* from changed, logged
   `;
   return rows[0] ? mapRow(rows[0] as InventoryRow) : null;
 }
 
-export async function deleteInventoryItem(id: string) {
+export async function deleteInventoryItem(id: string, actor: Actor, reason: string) {
+  await ensureAuditSchema();
   await ensureSchema();
   const sql = getSql();
-  const rows = await sql`delete from inventory_items where id = ${id} returning id`;
+  const rows = await sql`with deleted as (delete from inventory_items where id = ${id} and status <> 'IN_USE' returning *), logged as (
+    insert into audit_events(id,actor_user_id,actor_name,action,entity_type,entity_id,reason,before_data)
+    select ${crypto.randomUUID()},${actor.id},${actor.name},'STOCK_DELETED','inventory',id::text,${reason},to_jsonb(deleted) from deleted returning id
+  ) select deleted.id from deleted, logged`;
   return Boolean(rows[0]);
 }
-

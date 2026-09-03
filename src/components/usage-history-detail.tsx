@@ -48,6 +48,9 @@ export default function UsageHistoryDetail({ session, onClose }: { session: Usag
 
         <dl className="usage-history-metadata">
           <div><dt>Nama pengambil</dt><dd>{session.userName}</dd></div>
+          <div><dt>Kelas / kegiatan</dt><dd>{session.activityName || "Tidak tercatat"}</dd></div>
+          <div><dt>Dicatat oleh</dt><dd>{session.createdByName || "Tidak tercatat (data lama)"}</dd></div>
+          <div><dt>Diselesaikan oleh</dt><dd>{session.completedByName || "Belum tercatat"}</dd></div>
           <div><dt>Jenis penggunaan</dt><dd>{session.category}</dd></div>
           <div><dt>Status sesi</dt><dd>{sessionStatusLabels[session.status] ?? session.status}</dd></div>
           <div><dt>Jumlah unit</dt><dd>{session.unitCount} unit</dd></div>

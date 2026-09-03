@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { AlertCircle, LoaderCircle } from "lucide-react";
 import type { ReportsData } from "@/lib/report-data";
 
-export function useReports(view: string) {
+export function useReports(view: string, enabled = true) {
   const [data, setData] = useState<ReportsData | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     let controller: AbortController | null = null;
     const load = async () => {
@@ -37,7 +38,7 @@ export function useReports(view: string) {
     window.addEventListener("focus", refreshVisible);
     const interval = window.setInterval(refreshVisible, 60_000);
     return () => { active = false; controller?.abort(); window.removeEventListener("focus", refreshVisible); window.clearInterval(interval); };
-  }, [view, revision]);
+  }, [view, revision, enabled]);
   return { data, error, loading, reload: () => setRevision((value) => value + 1) };
 }
 

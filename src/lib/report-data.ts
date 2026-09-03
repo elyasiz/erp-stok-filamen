@@ -5,7 +5,7 @@ export type ReportSnapshot = {
   inventory: Array<{ id: string; code: string; product: string; material: string; color: string; packaging_type: string; remaining_grams: Amount; status: string; unit_cost: Amount; supplier: string; created_at: Timestamp; updated_at: Timestamp; source_receipt_id: string | null; source_receipt_item_id: string | null }>;
   receipts: Array<{ id: string; receipt_number: string; supplier: string; invoice_number: string; purchase_date: Timestamp; received_date: Timestamp; status: string; discount: Amount; tax: Amount; shipping: Amount; notes: string; created_at: Timestamp; updated_at: Timestamp }>;
   receiptItems: Array<{ id: string; receipt_id: string; quantity: number; unit_weight_grams: Amount; unit_cost: Amount }>;
-  sessions: Array<{ id: string; usage_number: string; user_name: string; usage_type: string; non_class_type: string | null; status: string; started_at: Timestamp; completed_at: Timestamp | null; result: string | null; notes: string }>;
+  sessions: Array<{ id: string; usage_number: string; user_name: string; usage_type: string; non_class_type: string | null; status: string; started_at: Timestamp; completed_at: Timestamp | null; result: string | null; notes: string; activity_name?: string; created_by_name?: string | null; completed_by_name?: string | null }>;
   sessionItems: Array<{ session_id: string; inventory_item_id: string; starting_grams: Amount; used_grams: Amount | null; returned_grams: Amount | null }>;
 };
 
@@ -56,6 +56,7 @@ export function buildReports(snapshot: ReportSnapshot, now = new Date()) {
     const completed = session.status === "COMPLETED";
     return {
       id: session.id, number: session.usage_number, userName: session.user_name,
+      activityName: session.activity_name ?? "", createdByName: session.created_by_name ?? null, completedByName: session.completed_by_name ?? null,
       category: session.usage_type === "CLASS" ? "Kelas" : session.non_class_type === "TRIAL_PRINT" ? "Trial Print" : "Sample",
       status: session.status, startedAt: iso(session.started_at), completedAt: session.completed_at ? iso(session.completed_at) : null,
       result: session.result, notes: session.notes, unitCount: items.length, items,
