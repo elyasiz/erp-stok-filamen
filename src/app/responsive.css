@@ -1,0 +1,250 @@
+/* Screen layouts are separate from the fixed 100 x 50 mm barcode print layout. */
+@media screen {
+  html { scrollbar-gutter: stable; scroll-padding-top: 6rem; }
+  body { min-width: 0; line-height: 1.5; }
+  button, select, textarea { font-family: inherit; }
+  button { touch-action: manipulation; }
+  button > svg { flex-shrink: 0; }
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+    min-width: 0; max-width: 100%; font-size: 1rem;
+  }
+  :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--lime-deep); outline-offset: 3px;
+  }
+  .app-shell, .content-shell { min-height: 100dvh; min-width: 0; }
+  .dashboard { min-width: 0; width: 100%; padding-inline: clamp(1rem, 2.5vw, 2rem); }
+  .dashboard > *, .dashboard-grid > *, .receipt-editor-grid > *, .workflow-grid > *,
+  .complete-grid > *, .settings-grid > *, .form-grid > *, .receipt-line-grid > *,
+  .account-role-grid > *, .my-usage-stats > *, .report-grid > * { min-width: 0; }
+  .form-panel, .summary-panel, .scan-cart, .data-panel, .panel,
+  .account-activity-list > article, .my-usage-detail { min-width: 0; max-width: 100%; }
+  .form-grid, .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .form-grid label, .stack-field, .receipt-line-grid label, .account-form label { min-width: 0; }
+  .page-heading, .module-heading, .panel-head, .section-title { flex-wrap: wrap; }
+  .page-heading > div, .module-heading > div, .panel-head > div, .section-title > div { min-width: 0; }
+  .page-heading h1, .module-heading h1, .dialog-head h2,
+  .section-title h2, .account-profile h1 { overflow-wrap: anywhere; }
+  .page-heading p, .module-heading p, .section-title p,
+  .account-role-grid p, .login-card p { font-size: 1rem; line-height: 1.6; }
+  .heading-actions { flex-wrap: wrap; max-width: 100%; overflow: visible; }
+  .button, .mini-button, .toolbar button, .report-card button,
+  .panel-footer-link, .text-button, .add-row { min-height: 44px; height: auto; padding-block: .65rem; }
+  .button, .mini-button { white-space: normal; text-align: center; }
+  .icon-button, .table-action { width: 44px; height: 44px; flex: 0 0 auto; }
+  .table-footer button, .cart-item button, .app-toast button { min-width: 40px; min-height: 40px; }
+  .row-actions { gap: 4px; }
+
+  /* A table scrolls inside its own panel instead of widening the whole page. */
+  .table-wrap { min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+  .data-table th { font-size: .875rem; padding-block: .75rem; }
+  .data-table td { font-size: .875rem; }
+  .account-table { min-width: 760px; }
+  .account-table td:first-child { max-width: 22rem; white-space: normal; overflow-wrap: anywhere; }
+  .toolbar { flex-wrap: wrap; align-items: center; }
+  .toolbar-actions { min-width: 0; max-width: 100%; flex-wrap: wrap; overflow: visible; }
+  .toolbar-actions > * { min-width: 0; }
+  .toolbar-select { min-height: 44px; height: auto; padding-block: .4rem; }
+  .role-select { min-height: 44px; height: auto; padding-block: .6rem; }
+  .toolbar-select select { min-width: 0; max-width: 100%; flex: 1; }
+  .table-search { flex: 1 1 16rem; min-width: 0; max-width: 100%; height: 46px; }
+  .table-search input, .global-search input { width: 100%; }
+  .table-footer { flex-wrap: wrap; gap: .75rem; }
+  .table-footer > div { flex-wrap: wrap; }
+
+  .topbar { min-height: 72px; height: auto; gap: 1rem; padding: .75rem clamp(1rem, 2.5vw, 2rem); }
+  .topbar-start { min-width: 0; flex: 1; }
+  .topbar-actions { flex: 0 0 auto; gap: .6rem; }
+  .global-search { min-width: 0; max-width: 100%; width: min(390px, 100%); height: 46px; }
+  .profile-copy { max-width: 13rem; }
+  .profile-copy strong, .profile-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar { height: 100dvh; max-height: 100dvh; }
+  .sidebar-top, .sidebar-footer { flex-shrink: 0; }
+  .main-nav { min-height: 0; overscroll-behavior-y: contain; }
+  .nav-item { min-height: 46px; padding-block: .6rem; }
+  .nav-item > svg { flex: 0 0 auto; }
+  .nav-item span { min-width: 0; overflow-wrap: anywhere; }
+  .sidebar .icon-button:focus-visible { outline-color: var(--lime); }
+  .sidebar .icon-button:hover { background: rgb(255 255 255 / 10%); }
+
+  /* Explicit inset, intrinsic height and auto margins also survive CSS resets. */
+  .account-dialog, .usage-history-dialog {
+    position: fixed; inset: 0; margin: auto; height: fit-content;
+    max-width: calc(100% - 2rem); max-height: calc(100dvh - 2rem);
+    overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable;
+  }
+  .account-dialog { width: 500px; padding: clamp(1rem, 3vw, 1.5rem); }
+  .usage-history-dialog { width: 1100px; }
+  .dialog-layer {
+    padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+      max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+    overflow-y: auto; overscroll-behavior: contain;
+  }
+  .inventory-dialog, .camera-dialog, .scan-dialog {
+    min-width: 0; max-width: 100%; max-height: calc(100dvh - 2rem);
+    overflow-y: auto; overscroll-behavior: contain;
+  }
+  .dialog-head { min-width: 0; }
+  .dialog-head > :first-child { min-width: 0; }
+  .dialog-actions { flex-wrap: wrap; }
+  .dialog-actions .button { flex: 0 1 auto; }
+  .inventory-detail dd, .detail-hero strong, .receipt-detail-items strong,
+  .receipt-detail-items small, .receipt-detail-cost dd, .account-profile p,
+  .account-profile dd, .account-activity-head > div, .inventory-form-error,
+  .info-strip, .summary-note, .app-toast { overflow-wrap: anywhere; }
+  .detail-hero { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .detail-hero > div, .receipt-detail-items article > div,
+  .account-activity-head > div { min-width: 0; }
+  .account-profile { width: 100%; }
+  .account-profile dd { margin: 0; min-width: 0; }
+  .account-form .report-note { padding: .25rem 0; }
+  .account-activity-head { flex-wrap: wrap; }
+  .account-activity-head > div { flex: 1 1 10rem; }
+  .account-activity-head time { flex: 0 1 auto; }
+  body:has(dialog[open]), body:has(.dialog-layer) { overflow: hidden; }
+
+  .report-card { grid-template-columns: auto minmax(0, 1fr); }
+  .report-card > div, .cost-list dt, .cost-list dd { min-width: 0; overflow-wrap: anywhere; }
+  .report-period > *, .usage-history-filters > * { max-width: 100%; }
+  .report-period label { min-width: 0; flex-wrap: wrap; }
+  .report-period input { min-width: 0; }
+  .report-period small { flex-basis: 100%; }
+  .usage-history-filters label { min-width: 0; flex: 1 1 10rem; }
+  .usage-history-name svg { top: 14px; }
+  .usage-history-filters input, .usage-history-filters select { min-height: 46px; }
+  .usage-summary > div, .usage-summary strong, .my-usage-stats strong { min-width: 0; overflow-wrap: anywhere; }
+  .kpi-value-row > strong { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .timeline-item { grid-template-columns: 32px minmax(0, 1fr) auto; }
+  .timeline-item time { max-width: 11rem; text-align: right; }
+  .cart-item { grid-template-columns: 28px minmax(0, 1fr) 40px; }
+  .cart-summary { flex-wrap: wrap; gap: .5rem; }
+  .receipt-line-head > div { min-width: 0; }
+  .receipt-line-total { flex-wrap: wrap; }
+  .barcode-field > div { min-width: 0; min-height: 44px; height: auto; }
+  .barcode-field > div input { width: 0; flex: 1; }
+  .form-grid input, .form-grid select, .stack-field input, .stack-field select,
+  .receipt-line-grid input, .receipt-line-grid select, .receipt-cost-inputs input,
+  .camera-manual input, .large-scan-zone input, .return-item input { min-height: 44px; height: auto; padding-block: .6rem; }
+  .inline-field { flex-wrap: wrap; gap: .75rem 1.25rem; }
+  .inline-field label { min-height: 44px; }
+  .large-scan-zone { padding: 1rem; }
+  .large-scan-zone > div { width: 100%; max-width: 430px; }
+  .large-scan-zone p { overflow-wrap: anywhere; }
+  .large-scan-zone button, .segmented button { min-height: 44px; height: auto; padding-block: .6rem; }
+  .session-banner { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
+  .session-banner > span { min-width: 0; overflow-wrap: anywhere; }
+  .completion-scan > label { min-width: 0; }
+  .complete-search input, .complete-search button { min-height: 44px; height: auto; padding-block: .6rem; }
+  .completion-return-item label { min-width: 0; }
+  .completion-receipt article > * { min-width: 0; overflow-wrap: anywhere; }
+  .inventory-load-error, .report-empty { flex-wrap: wrap; }
+  .login-shell { padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); }
+  .login-card { min-width: 0; margin-block: auto; }
+  .app-toast { bottom: calc(1rem + env(safe-area-inset-bottom)); }
+}
+
+@media screen and (max-width: 1200px) {
+  .page-heading, .module-heading { align-items: flex-start; flex-direction: column; }
+  .heading-actions { width: 100%; }
+  .settings-grid { grid-template-columns: minmax(0, 1fr); }
+  .complete-search { grid-template-columns: auto minmax(0, 1fr); }
+  .complete-search input, .complete-search button { grid-column: 1 / -1; width: 100%; min-height: 44px; }
+}
+
+@media screen and (max-width: 1024px) {
+  .sidebar { width: min(310px, calc(100% - 3rem)); visibility: hidden; pointer-events: none; transform: translateX(-102%); transition: transform 220ms ease; }
+  .sidebar.open { visibility: visible; pointer-events: auto; transform: translateX(0); }
+  .sidebar-close, .menu-button { display: inline-grid !important; }
+  .sidebar-backdrop { position: fixed; inset: 0; z-index: 35; display: block; background: rgb(10 17 27 / 45%); opacity: 0; pointer-events: none; transition: opacity 220ms ease; }
+  .sidebar-backdrop.show { opacity: 1; pointer-events: auto; }
+  body:has(.sidebar.open) { overflow: hidden; }
+  .content-shell { margin-left: 0; }
+  .topbar-logo { display: block; width: 42px; height: 42px; flex-shrink: 0; overflow: hidden; border-radius: 10px; background: white; }
+  .topbar-logo img { width: 128px; max-width: none; height: 42px; object-fit: cover; object-position: left center; }
+  .global-search kbd, .profile-copy, .profile-button > svg, .divider { display: none; }
+  .dashboard { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+  .mobile-scan { display: grid; right: max(1rem, env(safe-area-inset-right)); bottom: calc(1rem + env(safe-area-inset-bottom)); }
+  .app-toast { bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+  .receipt-line-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .completion-scan { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .completion-scan > label { grid-column: 1 / -1; }
+  .completion-return-item, .return-item { grid-template-columns: auto minmax(0, 1fr); }
+  .completion-return-item label, .return-item label { grid-column: 2; }
+  .receipt-cost-panel { position: static; }
+}
+
+@media screen and (max-width: 700px) {
+  .toolbar { align-items: stretch; flex-direction: column; }
+  .toolbar-actions { display: flex; width: 100%; }
+  .toolbar-actions > * { flex: 1 1 10rem; }
+  .table-search { width: 100%; flex: 0 0 auto; }
+  .account-filter { width: 100%; max-width: none; }
+  .account-activity-head time { width: 100%; margin-left: 0; text-align: left; }
+  .timeline-item { grid-template-columns: 32px minmax(0, 1fr); padding-block: .5rem; }
+  .timeline-item time { grid-column: 2; max-width: none; text-align: left; }
+  .active-item { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .active-item .elapsed { grid-column: 2 / -1; }
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .inventory-form-grid .full-field { grid-column: auto; }
+  .receipt-detail-summary, .receipt-detail-cost { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .session-banner, .complete-grid .session-banner { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .session-banner .status { justify-self: start; }
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; gap: .5rem; padding: .75rem; }
+  .steps li { min-height: 44px; height: auto; }
+  .steps li::after { display: none; }
+}
+
+@media screen and (max-width: 600px) {
+  html { scroll-padding-top: 9rem; }
+  .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .65rem; padding: .65rem 1rem; }
+  .topbar-start { display: contents; }
+  .menu-button { grid-column: 1; grid-row: 1; justify-self: start; }
+  .topbar-logo { grid-column: 1; grid-row: 1; margin-left: 54px; width: 108px; height: 38px; }
+  .topbar-logo img { width: 100%; max-width: 100%; height: 100%; object-fit: contain; transform: none; }
+  .topbar-actions { grid-column: 2; grid-row: 1; }
+  .global-search { grid-column: 1 / -1; grid-row: 2; width: 100%; max-width: none; }
+  .global-search input::placeholder { color: var(--muted); }
+  .heading-actions .button { flex: 1 1 11rem; }
+  .dialog-actions .button { flex: 1 1 9rem; }
+  .form-panel, .summary-panel, .scan-cart { padding: 1rem; }
+  .inventory-dialog, .camera-dialog, .scan-dialog { padding: 1rem; border-radius: 16px; }
+  .usage-history-dialog-body { padding: 1rem; }
+  .inventory-detail dl { grid-template-columns: minmax(0, 1fr); }
+  .detail-hero { grid-template-columns: auto minmax(0, 1fr); }
+  .detail-hero .status { grid-column: 2; justify-self: start; }
+  .report-grid { grid-template-columns: minmax(0, 1fr); }
+  .report-period { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-period label, .report-period small { grid-column: 1 / -1; }
+  .report-period label input { flex: 1; }
+  .usage-history-filters { gap: .75rem; padding-inline: 1rem; }
+  .usage-history-filters label, .usage-history-filters .usage-history-name { flex-basis: 100%; }
+  .receipt-line-grid { grid-template-columns: minmax(0, 1fr); }
+  .receipt-line-grid .barcode-field, .receipt-line-grid label:nth-child(2) { grid-column: auto; }
+  .receipt-line-head { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .receipt-line-head .mini-button { grid-column: 1 / -1; justify-content: center; }
+  .receipt-detail-items article { grid-template-columns: auto minmax(0, 1fr); }
+  .receipt-detail-items article > span:nth-last-child(2), .receipt-detail-items article > strong:last-child { grid-column: 2; }
+  .large-scan-zone > div { flex-direction: column; }
+  .large-scan-zone input { flex: 0 0 auto; width: 100%; }
+  .large-scan-zone button { min-height: 44px; height: auto; }
+  .camera-manual { grid-template-columns: minmax(0, 1fr); }
+  .camera-viewport, .camera-viewport video { min-height: 180px; height: min(38dvh, 300px); }
+  .account-profile { padding: 1rem; }
+}
+
+@media screen and (max-width: 420px) {
+  .kpi-grid, .module-stats, .receipt-detail-summary, .receipt-detail-cost,
+  .usage-history-metadata, .completion-receipt article { grid-template-columns: minmax(0, 1fr); }
+  .completion-receipt article > div { grid-column: auto; }
+  .kpi-value-row > strong { font-size: 1.75rem; }
+  .usage-summary { grid-template-columns: minmax(0, 1fr); }
+  .usage-summary > div + div { border-top: 1px solid var(--line); border-left: 0; }
+  .account-profile dl > div { flex-direction: column; gap: .35rem; }
+  .report-period .button { grid-column: 1 / -1; }
+}
+
+@media screen and (max-height: 600px) {
+  .sidebar-top { padding-block: .75rem; }
+  .storage-card { display: none; }
+  .camera-viewport, .camera-viewport video { min-height: 140px; height: 35dvh; }
+  .login-shell { justify-content: flex-start; }
+}

@@ -9,7 +9,7 @@ import UsageHistoryDetail from "./usage-history-detail";
 
 type ReportKind = "inventory" | "usages" | "receipts" | "movements";
 function Table({ headers, rows }: { headers: string[]; rows: ReactNode[][] }) {
-  return <div className="table-wrap"><table className="data-table"><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row, index) => <tr key={index}>{row.map((value, cell) => <td key={cell}>{value}</td>)}</tr>) : <tr><td colSpan={headers.length}><div className="report-empty">Belum ada data untuk pilihan ini.</div></td></tr>}</tbody></table></div>;
+  return <div className="table-wrap" tabIndex={0} role="region" aria-label="Tabel laporan"><table className="data-table"><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row, index) => <tr key={index}>{row.map((value, cell) => <td key={cell}>{value}</td>)}</tr>) : <tr><td colSpan={headers.length}><div className="report-empty">Belum ada data untuk pilihan ini.</div></td></tr>}</tbody></table></div>;
 }
 
 export default function ReportsView({ state, ledgerOnly = false }: { state: ReportState; ledgerOnly?: boolean }) {

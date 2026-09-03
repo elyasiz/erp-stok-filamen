@@ -68,7 +68,7 @@ export default function UsageHistoryDetail({ session, onClose }: { session: Usag
 
         <section aria-labelledby="usage-history-items-title">
           <h3 id="usage-history-items-title">Filamen yang digunakan</h3>
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0} role="region" aria-label="Rincian penggunaan filamen">
             <table className="data-table usage-history-items">
               <thead><tr><th>Filamen</th><th>Barcode unit</th><th>Kemasan / supplier</th><th>Gram awal</th><th>Gram digunakan</th><th>Sisa setelah sesi</th><th>Estimasi biaya</th></tr></thead>
               <tbody>{session.items.map((item) => (

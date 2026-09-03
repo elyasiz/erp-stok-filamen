@@ -3,7 +3,7 @@
 import { BarChart3, Bell, Boxes, ChevronDown, ClipboardCheck, Clock3, History, LayoutDashboard, Menu, PackagePlus, Plus, ScanBarcode, ScanLine, Search, Settings, Users, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Image from "next/image";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ModuleView, type ViewId } from "@/components/modules";
 import DashboardView from "@/components/dashboard-view";
 import { useReports, type ReportState } from "@/components/report-state";
@@ -56,12 +56,36 @@ function Logo() {
 
 function Sidebar({ open, activeView, onClose, onSelect, reports }: { reports: ReportState; open: boolean; activeView: ViewId; onClose: () => void; onSelect: (view: ViewId) => void }) {
   const { user } = useAuth();
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 1024px)");
+    const panel = panelRef.current;
+    if (!open || !mobile.matches || !panel) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    panel.querySelector<HTMLButtonElement>(".sidebar-close")?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); }
+      if (event.key !== "Tab") return;
+      const buttons = Array.from(panel.querySelectorAll<HTMLButtonElement>("button:not([disabled])")).filter(button => button.getClientRects().length);
+      const first = buttons[0], last = buttons[buttons.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    const handleResize = () => { if (!mobile.matches) onClose(); };
+    document.addEventListener("keydown", handleKey);
+    mobile.addEventListener("change", handleResize);
+    return () => {
+      document.removeEventListener("keydown", handleKey);
+      mobile.removeEventListener("change", handleResize);
+      if (previousFocus?.getClientRects().length) previousFocus.focus();
+    };
+  }, [open, onClose]);
   const allowed = (view: ViewId) => user && (view === "users" || view === "settings" ? user.role === "OWNER" : ["reports", "history", "receipt", "activity"].includes(view) ? isStaff(user) : true);
   const groups = navigation.map(group => ({ ...group, items: group.items.filter(item => allowed(item.view)) })).filter(group => group.items.length);
   return (
     <>
       <div className={`sidebar-backdrop ${open ? "show" : ""}`} onClick={onClose} aria-hidden="true" />
-      <aside className={`sidebar ${open ? "open" : ""}`}>
+      <aside ref={panelRef} id="tidigo-navigation" className={`sidebar ${open ? "open" : ""}`} role={open ? "dialog" : undefined} aria-modal={open || undefined} aria-label="Menu utama">
         <div className="sidebar-top">
           <Logo />
           <button className="icon-button sidebar-close" onClick={onClose} aria-label="Tutup menu">
@@ -109,6 +133,7 @@ function Sidebar({ open, activeView, onClose, onSelect, reports }: { reports: Re
 function Workspace() {
   const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [view, setView] = useState<ViewId>("dashboard");
   const reports = useReports(view, Boolean(user && isStaff(user)));
   const [usageSessionId, setUsageSessionId] = useState<string | null>(null);
@@ -125,12 +150,12 @@ function Workspace() {
   if (!user) return null;
   return (
     <div className="app-shell">
-      <Sidebar open={menuOpen} activeView={view} onClose={() => setMenuOpen(false)} onSelect={selectView} reports={reports} />
+      <Sidebar open={menuOpen} activeView={view} onClose={closeMenu} onSelect={selectView} reports={reports} />
 
       <div className="content-shell">
         <header className="topbar">
           <div className="topbar-start">
-            <button className="icon-button menu-button" onClick={() => setMenuOpen(true)} aria-label="Buka menu">
+            <button className="icon-button menu-button" onClick={() => setMenuOpen(true)} aria-label="Buka menu" aria-controls="tidigo-navigation" aria-expanded={menuOpen}>
               <Menu size={21} />
             </button>
             <span className="topbar-logo" aria-hidden="true">
