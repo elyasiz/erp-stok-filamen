@@ -131,6 +131,49 @@ test("unknown original weight produces missing cost, never an invented 1000g cos
   assert.equal(totals.incompleteCostCount, 1);
 });
 
+test("usage detail joins each filament identity but keeps the recorded session weights after later stock use", async () => {
+  const first = await stock({ code: "FLM-DETAIL-A", weight: 200 });
+  const second = await stock({ code: "FLM-DETAIL-B", weight: 600 });
+  const sessionId = await session(first, { used: 150.25 });
+  await db.query(`UPDATE inventory_items SET product='PETG Custom', material='PETG', color='Red', packaging_type='REFILL', supplier='Other supplier' WHERE id=$1`, [second]);
+  await db.query(`INSERT INTO usage_session_items (session_id, inventory_item_id, starting_grams, used_grams, returned_grams) VALUES ($1, $2, 750, 100.5, 649.5)`, [sessionId, second]);
+  const data = await reports.getReports();
+  const detail = data.usages.find((item) => item.id === sessionId);
+  assert.equal(detail.items.length, 2);
+  assert.equal(detail.items[0].product, "PLA, Basic");
+  assert.equal(detail.items[0].code, "FLM-DETAIL-A");
+  assert.equal(detail.items[0].startingGrams, 1000);
+  assert.equal(detail.items[0].usedGrams, 150.25);
+  assert.equal(detail.items[0].returnedGrams, 849.75); // Current stock is only 200g; it must not replace the session balance.
+  assert.equal(detail.items[1].product, "PETG Custom");
+  assert.equal(detail.items[1].material, "PETG");
+  assert.equal(detail.items[1].color, "Red");
+  assert.equal(detail.items[1].packagingType, "REFILL");
+  assert.equal(detail.items[1].supplier, "Other supplier");
+  assert.equal(detail.totalUsedGrams, 250.75);
+  assert.equal(detail.totalReturnedGrams, 1499.25);
+  assert.equal(detail.notes, "Catatan tersimpan");
+});
+
+test("history filters names and inclusive WIB dates with explicit start/completion choice", async () => {
+  const completedId = await session(await stock(), { used: 13.65 });
+  await db.query("UPDATE usage_sessions SET user_name='Jidan Putra' WHERE id=$1", [completedId]);
+  await session(await stock(), { status: "ACTIVE" });
+  const data = await reports.getReports();
+  const filters = { name: "  JIDAN  ", from: "2026-08-31", to: "2026-08-31", dateBasis: "started", month: "" };
+  const selected = helpers.filterUsageHistory(data.usages, filters);
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].id, completedId);
+  assert.equal(helpers.usageTotals(selected).grams, 13.65);
+  assert.equal(helpers.filterUsageHistory(data.usages, { ...filters, dateBasis: "completed" }).length, 0);
+  assert.equal(helpers.filterUsageHistory(data.usages, { ...filters, from: "2026-09-01", to: "2026-09-01", dateBasis: "completed" }).length, 1);
+  assert.equal(helpers.filterUsageHistory(data.usages, { ...filters, name: "Tidak ada" }).length, 0);
+  assert.equal(helpers.filterUsageHistory(data.usages, { ...filters, from: "2026-09-02", to: "2026-09-01" }).length, 0);
+  assert.equal(helpers.filterUsageHistory(data.usages, { name: "", from: "", to: "", dateBasis: "completed", month: "2026-09" }).length, 1);
+  assert.equal(helpers.filterUsageHistory(data.usages, { name: "", from: "", to: "", dateBasis: "started", month: "2026-08" }).length, 2);
+  assert.equal(helpers.filterUsageHistory(data.usages, { ...filters, from: "", to: "" }).length, 1);
+});
+
 test("CSV preserves decimals, embedded separators, quotes and newlines and neutralizes text formulas", () => {
   const csv = helpers.toCsv([["Produk", "Gram"], ['PLA, "Basic"\nWhite', 986.35], ["=HYPERLINK(x)", -13.65], [null, 0]]);
   assert.ok(csv.startsWith('\uFEFF"Produk","Gram"\r\n'));

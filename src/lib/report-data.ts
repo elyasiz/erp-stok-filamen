@@ -45,8 +45,14 @@ export function buildReports(snapshot: ReportSnapshot, now = new Date()) {
       // Manual units have no recorded original weight; their cost cannot be inferred from remaining grams.
       const estimatedCost = usedGrams === 0 ? 0 : usedGrams !== null && stock && line && Number(line.unit_weight_grams) > 0
         ? round(usedGrams * Number(stock.unit_cost) / Number(line.unit_weight_grams)) : null;
-      return { inventoryItemId: item.inventory_item_id, code: stock?.code ?? "Unit tidak tersedia", startingGrams: Number(item.starting_grams), usedGrams, returnedGrams: item.returned_grams === null ? null : Number(item.returned_grams), estimatedCost };
-    });
+      return {
+        inventoryItemId: item.inventory_item_id, code: stock?.code ?? "Unit tidak tersedia",
+        product: stock?.product ?? null, material: stock?.material ?? null, color: stock?.color ?? null,
+        packagingType: stock?.packaging_type ?? null, supplier: stock?.supplier ?? null,
+        startingGrams: Number(item.starting_grams), usedGrams,
+        returnedGrams: item.returned_grams === null ? null : Number(item.returned_grams), estimatedCost,
+      };
+    }).sort((a, b) => a.code.localeCompare(b.code));
     const completed = session.status === "COMPLETED";
     return {
       id: session.id, number: session.usage_number, userName: session.user_name,
@@ -112,6 +118,27 @@ export function buildReports(snapshot: ReportSnapshot, now = new Date()) {
 }
 
 export type ReportsData = ReturnType<typeof buildReports>;
+
+export type UsageHistoryFilters = {
+  name: string;
+  from: string;
+  to: string;
+  dateBasis: "started" | "completed";
+  month: string;
+};
+
+export function filterUsageHistory(usages: ReportsData["usages"], filters: UsageHistoryFilters) {
+  const name = filters.name.trim().toLocaleLowerCase("id-ID");
+  if (filters.from && filters.to && filters.from > filters.to) return [];
+  return usages.filter((session) => {
+    if (!session.userName.toLocaleLowerCase("id-ID").includes(name)) return false;
+    const timestamp = filters.dateBasis === "completed" ? session.completedAt : session.startedAt;
+    if (!timestamp) return false;
+    const date = jakartaDate(timestamp);
+    return (!filters.month || date.startsWith(filters.month))
+      && (!filters.from || date >= filters.from) && (!filters.to || date <= filters.to);
+  });
+}
 
 export function usageTotals(usages: ReportsData["usages"]) {
   const completed = usages.filter((item) => item.status === "COMPLETED");
