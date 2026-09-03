@@ -7,14 +7,10 @@ import {
   Check,
   CheckCircle2,
   ClipboardCheck,
-  Download,
   Eye,
-  FileSpreadsheet,
   Filter,
-  History,
   LoaderCircle,
   PackageOpen,
-  PackagePlus,
   Pencil,
   Plus,
   Printer,
@@ -24,13 +20,14 @@ import {
   SlidersHorizontal,
   Trash2,
   Users,
-  Weight,
   X,
 } from "lucide-react";
 import JsBarcode from "jsbarcode";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReceiptView, { CameraBarcodeScanner } from "./receipt-view";
 import CompleteUsageView from "./complete-usage-view";
+import ReportsView from "./reports-view";
+import type { ReportState } from "./report-state";
 
 export type ViewId =
   | "dashboard"
@@ -45,13 +42,6 @@ export type ViewId =
   | "settings";
 
 type NavigateView = (view: ViewId, sessionId?: string) => void;
-
-const ledger = [
-  { time: "01 Sep · 10:42", code: "FLM-2608-0128", type: "Penggunaan", ref: "USE-260901-008", change: "−184,50 g", before: "812,00 g", after: "627,50 g", user: "Operator Demo 4" },
-  { time: "01 Sep · 09:56", code: "FLM-2609-0018", type: "Barang masuk", ref: "RCV-260901-003", change: "+1.000 g", before: "0 g", after: "1.000 g", user: "Admin Demo" },
-  { time: "31 Agu · 16:38", code: "FLM-2608-0142", type: "Koreksi kurang", ref: "ADJ-260831-002", change: "−12,00 g", before: "160,00 g", after: "148,00 g", user: "Admin TIDIGO" },
-  { time: "31 Agu · 15:14", code: "FLM-2608-0098", type: "Penggunaan", ref: "USE-260831-021", change: "−86,00 g", before: "322,00 g", after: "236,00 g", user: "Operator Demo 2" },
-];
 
 function Status({ children }: { children: string }) {
   const tone = children === "Tersedia" || children === "Aktif" ? "success" : children === "Digunakan" ? "info" : "warning";
@@ -540,28 +530,6 @@ function ActiveUsageView({ onNavigate }: { onNavigate: NavigateView }) {
 }
 
 
-function ReportsView({ ledgerOnly = false }: { ledgerOnly?: boolean }) {
-  const downloadCsv = (type: string) => {
-    const csv = `Tanggal,Barcode,Jenis,Referensi,Perubahan,Saldo Sebelum,Saldo Setelah,User\n${ledger.map((row) => `${row.time},${row.code},${row.type},${row.ref},${row.change},${row.before},${row.after},${row.user}`).join("\n")}`;
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${type}-tidigo.csv`; anchor.click(); URL.revokeObjectURL(url);
-  };
-  return (
-    <>
-      <ModuleHeading eyebrow={ledgerOnly ? "INVENTORY · LEDGER" : "PELAPORAN"} title={ledgerOnly ? "Riwayat pergerakan stok" : "Laporan"} description={ledgerOnly ? "Jejak setiap perubahan gram yang tidak dapat dihapus." : "Empat laporan prioritas untuk kontrol stok dan biaya."}>
-        <button className="button secondary" onClick={() => downloadCsv(ledgerOnly ? "ledger" : "laporan")}><Download size={17} /> Ekspor CSV</button>
-      </ModuleHeading>
-      {!ledgerOnly ? <section className="report-grid">{[
-        ["Stok saat ini", "167 unit · 128,4 kg", Weight, "Nilai dan posisi stok terkini"],
-        ["Penggunaan", "65 transaksi bulan ini", ScanBarcode, "Gram, biaya, hasil pekerjaan"],
-        ["Barang masuk", "3 penerimaan bulan ini", PackagePlus, "Supplier dan landed cost"],
-        ["Pergerakan stok", "2.184 baris ledger", History, "Jejak saldo per unit"],
-      ].map(([title, stat, Icon, text]) => <article className="report-card" key={String(title)}><span className="report-icon"><Icon size={21} /></span><div><h2>{String(title)}</h2><strong>{String(stat)}</strong><p>{String(text)}</p></div><button onClick={() => downloadCsv(String(title).toLowerCase().replaceAll(" ", "-"))}><FileSpreadsheet size={16} /> CSV</button></article>)}</section> : null}
-      <section className="data-panel ledger-panel"><div className="toolbar"><div><strong>Pergerakan terbaru</strong><small>Ledger bersifat append-only</small></div><div className="toolbar-actions"><button><Filter size={16} /> Filter</button><button onClick={() => downloadCsv("pergerakan-stok")}><Download size={16} /> Ekspor</button></div></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Waktu</th><th>Barcode unit</th><th>Jenis</th><th>Referensi</th><th>Perubahan</th><th>Saldo sebelum</th><th>Saldo setelah</th><th>Pengguna</th></tr></thead><tbody>{ledger.map((row) => <tr key={`${row.time}-${row.code}`}><td>{row.time}</td><td><code>{row.code}</code></td><td>{row.type}</td><td>{row.ref}</td><td className={row.change.startsWith("+") ? "positive-copy" : "negative-copy"}>{row.change}</td><td>{row.before}</td><td><strong>{row.after}</strong></td><td>{row.user}</td></tr>)}</tbody></table></div></section>
-    </>
-  );
-}
-
 function UsersView() {
   const people = [{ name: "Admin TIDIGO", email: "admin@example.test", account: "Staff", role: "Super Admin", last: "Hari ini, 10:58" }, { name: "Admin Demo", email: "inventory@example.test", account: "Staff", role: "Admin Inventory", last: "Hari ini, 09:56" }, { name: "Operator Demo 1", email: "operator1@example.test", account: "Coach", role: "Operator", last: "Hari ini, 10:18" }, { name: "Operator Demo 2", email: "operator2@example.test", account: "Coach", role: "Operator", last: "Hari ini, 09:42" }];
   return <><ModuleHeading eyebrow="ADMINISTRATION" title="Pengguna & role" description="Identitas dari MLS, hak akses dikelola di ERP."><button className="button secondary"><Users size={17} /> Sinkronkan MLS</button></ModuleHeading><section className="access-note"><ShieldCheck size={20} /><span><strong>Akses siswa selalu ditolak.</strong><small>Role dicek di backend pada setiap permintaan.</small></span></section><section className="data-panel"><div className="toolbar"><label className="table-search"><Search size={17} /><input placeholder="Cari nama atau email..." /></label></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Pengguna</th><th>Tipe akun MLS</th><th>Role ERP</th><th>Login terakhir</th><th>Status</th></tr></thead><tbody>{people.map((person) => <tr key={person.email}><td><div className="product-cell"><span className="avatar soft">{person.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><span><strong>{person.name}</strong><small>{person.email}</small></span></div></td><td>{person.account}</td><td><select className="role-select" defaultValue={person.role}><option>Operator</option><option>Admin Inventory</option><option>Supervisor</option><option>Super Admin</option></select></td><td>{person.last}</td><td><Status>Aktif</Status></td></tr>)}</tbody></table></div></section></>;
@@ -571,14 +539,14 @@ function SettingsView() {
   return <><ModuleHeading eyebrow="ADMINISTRATION" title="Pengaturan sistem" description="Konfigurasi lokasi, label, dan batas stok."><button className="button primary"><Check size={17} /> Simpan perubahan</button></ModuleHeading><div className="settings-grid"><section className="form-panel"><div className="section-title"><div><h2>Aturan inventory</h2><p>Berlaku untuk seluruh unit filamen.</p></div><SlidersHorizontal size={20} /></div><div className="form-grid"><label><span>Batas hampir habis (gram)</span><input type="number" defaultValue="500" /></label><label><span>Berat nominal unit (gram)</span><input type="number" defaultValue="1000" disabled /></label><label><span>Lokasi default</span><select><option>Gudang Filamen Utama</option></select></label><label><span>Zona waktu</span><select><option>Asia/Jakarta (WIB)</option></select></label></div></section><section className="form-panel"><div className="section-title"><div><h2>Format label</h2><p>Default untuk PDF barcode Code 128.</p></div><Printer size={20} /></div><div className="label-preview"><Barcode size={80} strokeWidth={1} /><strong>FLM-2609-0018</strong><small>Bambu Lab PLA Basic · Matte Black</small></div><div className="form-grid"><label><span>Ukuran kertas</span><select><option>A4 · 24 label</option><option>A4 · 40 label</option></select></label><label><span>Tipe barcode</span><select disabled><option>Code 128</option></select></label></div></section></div></>;
 }
 
-export function ModuleView({ view, onNavigate, usageSessionId }: { view: ViewId; onNavigate: NavigateView; usageSessionId: string | null }) {
+export function ModuleView({ view, onNavigate, usageSessionId, reports }: { reports: ReportState; view: ViewId; onNavigate: NavigateView; usageSessionId: string | null }) {
   if (view === "inventory") return <InventoryView />;
   if (view === "receipt") return <ReceiptView />;
   if (view === "usage-start") return <UsageStartView onNavigate={onNavigate} />;
   if (view === "usage-active") return <ActiveUsageView onNavigate={onNavigate} />;
   if (view === "usage-complete") return <CompleteUsageView key={usageSessionId ?? "choose-session"} initialSessionId={usageSessionId} onOpenActive={() => onNavigate("usage-active")} />;
-  if (view === "reports") return <ReportsView />;
-  if (view === "history") return <ReportsView ledgerOnly />;
+  if (view === "reports") return <ReportsView state={reports} />;
+  if (view === "history") return <ReportsView state={reports} ledgerOnly />;
   if (view === "users") return <UsersView />;
   return <SettingsView />;
 }

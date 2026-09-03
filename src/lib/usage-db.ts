@@ -61,7 +61,7 @@ function getSql() {
   return neon(databaseUrl);
 }
 
-async function ensureUsageSchema() {
+export async function ensureUsageSchema() {
   if (!usageSchemaReady) {
     usageSchemaReady = (async () => {
       const sql = getSql();

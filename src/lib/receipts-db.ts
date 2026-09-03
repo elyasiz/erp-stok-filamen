@@ -81,7 +81,7 @@ function getSql() {
   return neon(databaseUrl);
 }
 
-async function ensureReceiptSchema() {
+export async function ensureReceiptSchema() {
   if (!receiptSchemaReady) {
     receiptSchemaReady = (async () => {
       const sql = getSql();
@@ -388,4 +388,3 @@ export async function deleteReceipt(id: string) {
   ]);
   return true;
 }
-

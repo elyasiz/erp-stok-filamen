@@ -84,7 +84,7 @@ button { color: inherit; }
 .storage-card-head { display: flex; justify-content: space-between; color: #d4dae2; font-size: 11px; }
 .storage-card-head strong { color: var(--lime); }
 .storage-bar { height: 5px; margin: 10px 0 8px; overflow: hidden; border-radius: 999px; background: rgb(255 255 255 / 8%); }
-.storage-bar i { display: block; width: 91%; height: 100%; border-radius: inherit; background: var(--lime); }
+.storage-bar i { display: block; height: 100%; border-radius: inherit; background: var(--lime); }
 .storage-card small { color: #7e8b9a; font-size: 9px; }
 
 .content-shell { min-height: 100vh; margin-left: 246px; }
@@ -529,6 +529,13 @@ button { color: inherit; }
 }
 
 .report-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.report-period { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.report-period label { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.report-period input { min-width: 150px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: white; }
+.report-period small, .report-updated { color: var(--muted); font-size: 10px; }
+.report-empty { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 28px 16px; color: var(--muted); font-size: 12px; text-align: center; }
+.report-note { margin: 0; padding: 12px 18px; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.report-card.selected { border-color: #93b64a; box-shadow: 0 0 0 1px #93b64a; }
 .report-card { display: grid; grid-template-columns: auto 1fr; gap: 11px; border: 1px solid var(--line); border-radius: 16px; background: white; box-shadow: var(--shadow); padding: 15px; }
 .report-icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 11px; background: #eef3e5; color: #66764d; }
 .report-card > div { display: grid; gap: 3px; }
