@@ -1,6 +1,8 @@
 import "server-only";
 
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import { ensureAuditSchema } from "./audit-db";
+import type { Actor } from "./account-types";
 
 export const receiptSuppliers = [
   "IndoCart",
@@ -321,7 +323,8 @@ async function assertGeneratedStockCanChange(sql: SqlClient, receiptId: string) 
   if (Number(rows[0]?.changed_count ?? 0) > 0) throw new Error("Penerimaan tidak dapat diubah atau dihapus karena sebagian stoknya sudah digunakan.");
 }
 
-export async function createReceipt(input: ReceiptInput) {
+export async function createReceipt(input: ReceiptInput, actor: Actor) {
+  await ensureAuditSchema();
   await ensureReceiptSchema();
   const sql = getSql();
   const id = crypto.randomUUID();
@@ -340,11 +343,14 @@ export async function createReceipt(input: ReceiptInput) {
     insert into inventory_items (id, code, product, material, color, packaging_type, remaining_grams, status, unit_cost, supplier, source_receipt_id, source_receipt_item_id)
     values (${item.id}, ${item.code}, ${item.product}, ${item.material}, ${item.color}, ${item.packagingType}, ${item.remainingGrams}, 'AVAILABLE', ${item.unitCost}, ${item.supplier}, ${id}, ${item.receiptItemId})
   `));
+  queries.push(sql`insert into audit_events(id,actor_user_id,actor_name,action,entity_type,entity_id,after_data)
+    values(${crypto.randomUUID()},${actor.id},${actor.name},'RECEIPT_CREATED','receipt',${id},${JSON.stringify({ number, ...input })}::jsonb)`);
   await sql.transaction(queries);
   return getReceipt(id);
 }
 
-export async function updateReceipt(id: string, input: ReceiptInput) {
+export async function updateReceipt(id: string, input: ReceiptInput, actor: Actor) {
+  await ensureAuditSchema();
   await ensureReceiptSchema();
   const sql = getSql();
   const existing = await sql`select receipt_number from goods_receipts where id = ${id} limit 1`;
@@ -354,6 +360,8 @@ export async function updateReceipt(id: string, input: ReceiptInput) {
   const itemIds = input.items.map(() => crypto.randomUUID());
   const stockRows = inventoryRows(id, number, input, itemIds);
   const queries = [
+    sql`insert into audit_events(id,actor_user_id,actor_name,action,entity_type,entity_id,before_data,after_data)
+      select ${crypto.randomUUID()},${actor.id},${actor.name},'RECEIPT_UPDATED','receipt',id::text,to_jsonb(r),${JSON.stringify(input)}::jsonb from goods_receipts r where id=${id}`,
     sql`delete from inventory_items where source_receipt_id = ${id}`,
     sql`delete from goods_receipt_items where receipt_id = ${id}`,
     sql`
@@ -376,13 +384,16 @@ export async function updateReceipt(id: string, input: ReceiptInput) {
   return getReceipt(id);
 }
 
-export async function deleteReceipt(id: string) {
+export async function deleteReceipt(id: string, actor: Actor) {
+  await ensureAuditSchema();
   await ensureReceiptSchema();
   const sql = getSql();
   const existing = await sql`select id from goods_receipts where id = ${id} limit 1`;
   if (!existing[0]) return false;
   await assertGeneratedStockCanChange(sql, id);
   await sql.transaction([
+    sql`insert into audit_events(id,actor_user_id,actor_name,action,entity_type,entity_id,before_data)
+      select ${crypto.randomUUID()},${actor.id},${actor.name},'RECEIPT_DELETED','receipt',id::text,to_jsonb(r) from goods_receipts r where id=${id}`,
     sql`delete from inventory_items where source_receipt_id = ${id}`,
     sql`delete from goods_receipts where id = ${id}`,
   ]);

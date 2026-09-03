@@ -1,6 +1,8 @@
 import "server-only";
 
 import { neon } from "@neondatabase/serverless";
+import type { Actor } from "./account-types";
+import { ensureAuditSchema } from "./audit-db";
 
 const usageTypes = ["CLASS", "NON_CLASS"] as const;
 const nonClassTypes = ["TRIAL_PRINT", "SAMPLE"] as const;
@@ -21,12 +23,19 @@ export type UsageInput = {
   usageType: UsageType;
   nonClassType: NonClassType | null;
   inventoryItemIds: string[];
+  activityName?: string;
+  borrowerUserId?: string;
 };
 
 type UsageRow = {
   id: string;
   usage_number: string;
   user_name: string;
+  borrower_user_id: string | null;
+  created_by_user_id: string | null;
+  created_by_name: string | null;
+  completed_by_name: string | null;
+  activity_name: string;
   usage_type: UsageType;
   non_class_type: NonClassType | null;
   status: "ACTIVE" | "COMPLETED" | "CANCELLED";
@@ -64,6 +73,7 @@ function getSql() {
 export async function ensureUsageSchema() {
   if (!usageSchemaReady) {
     usageSchemaReady = (async () => {
+      await ensureAuditSchema();
       const sql = getSql();
       await sql`
         create table if not exists inventory_items (
@@ -110,6 +120,13 @@ export async function ensureUsageSchema() {
       await sql`create index if not exists usage_session_items_inventory_idx on usage_session_items (inventory_item_id)`;
       await sql`alter table usage_sessions add column if not exists result text check (result in ('SUCCESS', 'PARTIAL', 'FAILED', 'CANCELLED'))`;
       await sql`alter table usage_sessions add column if not exists notes text not null default ''`;
+      await sql`alter table usage_sessions add column if not exists borrower_user_id uuid`;
+      await sql`alter table usage_sessions add column if not exists created_by_user_id uuid`;
+      await sql`alter table usage_sessions add column if not exists created_by_name text`;
+      await sql`alter table usage_sessions add column if not exists completed_by_user_id uuid`;
+      await sql`alter table usage_sessions add column if not exists completed_by_name text`;
+      await sql`alter table usage_sessions add column if not exists activity_name text not null default ''`;
+      await sql`create index if not exists usage_sessions_borrower_idx on usage_sessions(borrower_user_id, started_at desc)`;
     })().catch((error) => {
       usageSchemaReady = null;
       throw error;
@@ -123,6 +140,10 @@ function mapUsage(row: UsageRow) {
     id: row.id,
     number: row.usage_number,
     userName: row.user_name,
+    borrowerUserId: row.borrower_user_id,
+    createdByName: row.created_by_name,
+    completedByName: row.completed_by_name,
+    activityName: row.activity_name,
     usageType: row.usage_type,
     nonClassType: row.non_class_type,
     status: row.status,
@@ -156,7 +177,9 @@ export function parseUsageInput(value: unknown): UsageInput {
     throw new Error("Identitas unit filamen tidak valid.");
   }
 
-  return { userName, usageType, nonClassType, inventoryItemIds };
+  const activityName = String(input.activityName ?? "").trim();
+  if (activityName.length > 160) throw new Error("Nama kelas atau kegiatan maksimal 160 karakter.");
+  return { userName, usageType, nonClassType, inventoryItemIds, activityName };
 }
 
 export function parseUsageCompletionInput(value: unknown): UsageCompletionInput {
@@ -195,7 +218,7 @@ function usageNumber(id: string) {
   return `USE-${value("year")}${value("month")}${value("day")}-${id.slice(0, 6).toUpperCase()}`;
 }
 
-function usageQuery(id?: string) {
+function usageQuery(id?: string, actor?: Actor, history = false) {
   const sql = getSql();
   return id
     ? sql`
@@ -206,6 +229,7 @@ function usageQuery(id?: string) {
         from usage_sessions s
         left join usage_session_items i on i.session_id = s.id
         where s.id = ${id}
+          and (${actor?.role !== "COACH"} or s.borrower_user_id = ${actor?.id ?? null}::uuid)
         group by s.id
       `
     : sql`
@@ -215,22 +239,23 @@ function usageQuery(id?: string) {
           coalesce(sum(i.returned_grams), 0) as total_returned_grams
         from usage_sessions s
         left join usage_session_items i on i.session_id = s.id
-        where s.status = 'ACTIVE'
+        where (${history} or s.status = 'ACTIVE')
+          and (${actor?.role !== "COACH"} or s.borrower_user_id = ${actor?.id ?? null}::uuid)
         group by s.id
         order by s.started_at desc
       `;
 }
 
-export async function listActiveUsageSessions() {
+export async function listActiveUsageSessions(actor?: Actor) {
   await ensureUsageSchema();
-  const rows = await usageQuery();
+  const rows = await usageQuery(undefined, actor);
   return (rows as UsageRow[]).map(mapUsage);
 }
 
-export async function getUsageSession(id: string) {
+export async function getUsageSession(id: string, actor?: Actor) {
   if (!uuidPattern.test(id)) throw new Error("Nomor sesi tidak valid.");
   await ensureUsageSchema();
-  const rows = await usageQuery(id);
+  const rows = await usageQuery(id, actor);
   if (!rows[0]) return null;
   const sql = getSql();
   const itemRows = await sql`
@@ -255,7 +280,7 @@ export async function getUsageSession(id: string) {
   };
 }
 
-export async function findActiveUsageByBarcode(barcode: string) {
+export async function findActiveUsageByBarcode(barcode: string, actor?: Actor) {
   const code = barcode.trim().toUpperCase();
   if (!code || code.length > 40) throw new Error("Masukkan barcode unit yang valid.");
   await ensureUsageSchema();
@@ -265,13 +290,20 @@ export async function findActiveUsageByBarcode(barcode: string) {
     join usage_session_items item on item.session_id = s.id
     join inventory_items inv on inv.id = item.inventory_item_id
     where s.status = 'ACTIVE' and inv.code = ${code}
+      and (${actor?.role !== "COACH"} or s.borrower_user_id = ${actor?.id ?? null}::uuid)
     limit 2
   `;
   if (rows.length > 1) throw new Error("Unit terkait lebih dari satu sesi aktif. Periksa data sesi sebelum melanjutkan.");
-  return rows[0] ? getUsageSession(String(rows[0].id)) : null;
+  return rows[0] ? getUsageSession(String(rows[0].id), actor) : null;
 }
 
-export async function createUsageSession(input: UsageInput) {
+export async function listMyUsageSessions(actor: Actor) {
+  await ensureUsageSchema();
+  const rows = await usageQuery(undefined, { ...actor, role: "COACH" }, true);
+  return (rows as UsageRow[]).map(mapUsage);
+}
+
+export async function createUsageSession(input: UsageInput, actor?: Actor) {
   await ensureUsageSchema();
   const sql = getSql();
   const id = crypto.randomUUID();
@@ -293,8 +325,8 @@ export async function createUsageSession(input: UsageInput) {
       order by inv.id
       for update
     ), new_session as (
-      insert into usage_sessions (id, usage_number, user_name, usage_type, non_class_type)
-      select ${id}, ${number}, ${input.userName}, ${input.usageType}, ${input.nonClassType}
+      insert into usage_sessions (id, usage_number, user_name, usage_type, non_class_type, activity_name, borrower_user_id, created_by_user_id, created_by_name)
+      select ${id}, ${number}, ${input.userName}, ${input.usageType}, ${input.nonClassType}, ${input.activityName ?? ""}, ${input.borrowerUserId ?? actor?.id ?? null}, ${actor?.id ?? null}, ${actor?.name ?? null}
       where (select count(*) from eligible) = ${input.inventoryItemIds.length}
       returning id
     ), session_items as (
@@ -309,14 +341,18 @@ export async function createUsageSession(input: UsageInput) {
       where inv.id = item.inventory_item_id
       returning inv.id
     )
-    select id from new_session
+    , logged as (
+      insert into audit_events(id,actor_user_id,actor_name,action,entity_type,entity_id,after_data)
+      select ${crypto.randomUUID()},${actor?.id ?? null},${actor?.name ?? input.userName},'USAGE_STARTED','usage',id::text,
+        jsonb_build_object('number',${number}::text,'borrower',${input.userName}::text,'activity',${input.activityName ?? ""}::text,'units',${input.inventoryItemIds.length}::int) from new_session returning id
+    ) select id from new_session
   `;
   if (!rows[0]) throw new Error("UNIT_NOT_AVAILABLE");
   return getUsageSession(id);
 }
 
-export async function completeUsageSession(id: string, input: UsageCompletionInput) {
-  const existing = await getUsageSession(id);
+export async function completeUsageSession(id: string, input: UsageCompletionInput, actor?: Actor) {
+  const existing = await getUsageSession(id, actor);
   if (!existing) throw new Error("USAGE_NOT_FOUND");
   if (existing.status !== "ACTIVE") throw new Error("USAGE_ALREADY_COMPLETED");
   const sql = getSql();
@@ -332,7 +368,8 @@ export async function completeUsageSession(id: string, input: UsageCompletionInp
       select * from jsonb_to_recordset(${requestedItems}::jsonb)
       as req(inventory_item_id uuid, barcode text, used_grams numeric)
     ), target as (
-      select id from usage_sessions where id = ${id} and status = 'ACTIVE' for update
+      select id from usage_sessions where id = ${id} and status = 'ACTIVE'
+        and (${actor?.role !== "COACH"} or borrower_user_id = ${actor?.id ?? null}::uuid) for update
     ), locked_inventory as (
       select inv.id, inv.code, inv.status, inv.remaining_grams, item.starting_grams
       from inventory_items inv
@@ -373,11 +410,17 @@ export async function completeUsageSession(id: string, input: UsageCompletionInp
       returning item.inventory_item_id
     ), completed as (
       update usage_sessions s
-      set status = 'COMPLETED', result = ${input.result}, notes = ${input.notes}, completed_at = now(), updated_at = now()
+      set status = 'COMPLETED', result = ${input.result}, notes = ${input.notes}, completed_at = now(), updated_at = now(),
+        completed_by_user_id = ${actor?.id ?? null}, completed_by_name = ${actor?.name ?? null}
       from ready where s.id = ready.id and (select count(*) from updated_items) = ${input.items.length}
       returning s.id
     )
-    select id from completed
+    , logged as (
+      insert into audit_events(id,actor_user_id,actor_name,action,entity_type,entity_id,before_data,after_data)
+      select ${crypto.randomUUID()},${actor?.id ?? null},${actor?.name ?? existing.userName},'USAGE_COMPLETED','usage',id::text,
+        ${JSON.stringify({ number: existing.number, items: existing.items.map(item => ({ code: item.code, grams: item.startingGrams })) })}::jsonb,
+        ${JSON.stringify({ number: existing.number, result: input.result, items: input.items })}::jsonb from completed returning id
+    ) select id from completed
   `;
   if (!rows[0]) throw new Error("USAGE_COMPLETION_CONFLICT");
   return getUsageSession(id);

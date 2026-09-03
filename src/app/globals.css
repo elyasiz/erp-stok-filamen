@@ -702,3 +702,69 @@ button { color: inherit; }
   .barcode-print-area { position: fixed; inset: 0; width: 100mm; height: 50mm; margin: 0; border-radius: 0; background: white; padding: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .barcode-label { width: 100mm; height: 50mm; aspect-ratio: auto; border: 0; border-radius: 0; box-shadow: none; padding: 3.5mm 4mm 3mm; }
 }
+
+/* Staff accounts and personal usage */
+.login-shell { min-height:100dvh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2rem 1rem; background:var(--canvas,#f2f5f4); }
+.login-card { width:min(100%,460px); background:white; border:1px solid var(--line); border-top:5px solid var(--lime); border-radius:22px; padding:2.5rem; display:flex; flex-direction:column; align-items:center; gap:1.1rem; text-align:center; box-shadow:0 20px 70px #183f3010; }
+.login-logo { width:220px; height:auto; margin-bottom:.75rem; }
+.login-icon { padding:14px; border-radius:50%; background:#eff8d7; color:#253613; }
+.login-card h1 { font-size:1.55rem; letter-spacing:-.03em; margin:0; }
+.login-card p { font-size:1rem; line-height:1.6; margin:0; }
+.login-card small,.login-footer { font-size:.8rem; color:var(--muted); line-height:1.5; }
+.login-footer { margin-top:1.25rem; text-align:center; }
+.login-status { display:flex; align-items:center; justify-content:center; gap:.6rem; }
+.login-feedback { padding:1.2rem; border:1px solid var(--line); border-radius:14px; width:100%; display:flex; align-items:center; flex-direction:column; gap:.85rem; background:#f7faf8; }
+.login-feedback .button { font-size:.875rem; }
+.accounts-view { font-size:1rem; }
+.accounts-view .module-heading p,.accounts-view .button,.accounts-view .mini-button,.accounts-view .report-note { font-size:.875rem; }
+.account-role-grid,.my-usage-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; margin-bottom:1.5rem; }
+.account-role-grid article,.my-usage-stats article { background:white; border:1px solid var(--line); padding:1.25rem; border-radius:16px; }
+.account-role-grid h2 { font-size:1rem; margin:.7rem 0 .45rem; }
+.account-role-grid p { font-size:.875rem; color:var(--muted); line-height:1.6; margin:0; }
+.account-table td,.account-table th,.account-activity-list td,.account-activity-list th,.my-usage-detail td,.my-usage-detail th { font-size:.875rem; padding:1rem; }
+.account-table td>small,.account-table .product-cell small,.my-usage-detail td>small { display:block; font-size:.8rem; margin-top:.3rem; }
+.account-table .product-cell strong { font-size:.875rem; }
+.account-table .status { font-size:.8rem; white-space:nowrap; }
+.account-dialog { width:min(94vw,500px); max-height:90dvh; overflow:auto; background:white; color:var(--ink); border:1px solid var(--line); border-radius:20px; padding:1.5rem; }
+.account-dialog::backdrop { background:#142c3466; }
+.account-form { display:grid; gap:1rem; margin-top:1rem; }
+.account-form label { display:grid; gap:.4rem; font-size:.875rem; font-weight:600; }
+.account-form input,.account-form select { width:100%; min-height:44px; border:1px solid var(--line); border-radius:10px; padding:.6rem .8rem; font-size:1rem; background:white; color:var(--ink); }
+.account-form :disabled { background:#f0f3f1; color:#63726c; }
+.account-form .button { font-size:.875rem; min-height:42px; }
+.account-profile { max-width:620px; margin:1rem auto; text-align:center; padding:2rem; }
+.account-avatar { width:80px; height:80px; font-size:1.7rem; margin:0 auto 1rem; }
+.account-profile h1 { font-size:1.7rem; }
+.account-profile p { font-size:1rem; }
+.account-role { display:inline-flex; align-items:center; gap:.5rem; font-size:.875rem; padding:.5rem .8rem; border-radius:30px; background:#eff8d7; color:#31451d; }
+.account-profile dl { text-align:left; margin:1.5rem 0; }
+.account-profile dl>div { display:flex; justify-content:space-between; flex-wrap:wrap; gap:.75rem; border-bottom:1px solid var(--line); padding:1rem 0; font-size:.875rem; }
+.account-profile dt { color:var(--muted); }
+.account-search { margin:1rem 0; width:min(100%,500px); }
+.account-search input,.accounts-view .table-search input { font-size:.875rem; }
+.account-filter { max-width:210px; font-size:.875rem; }
+.account-activity-list { display:grid; gap:.9rem; }
+.account-activity-list>article { border:1px solid var(--line); border-radius:16px; padding:1.2rem; background:white; font-size:.875rem; }
+.account-activity-head { display:flex; align-items:center; gap:.85rem; }
+.account-activity-head p { margin:.25rem 0; color:var(--muted); }
+.account-activity-head time { margin-left:auto; color:var(--muted); font-size:.8rem; }
+.account-activity-list details { margin-top:1rem; }
+.account-activity-list summary { cursor:pointer; color:#31451d; }
+.my-usage-stats article { display:flex; align-items:center; gap:1rem; }
+.my-usage-stats span { display:block; color:var(--muted); font-size:.875rem; }
+.my-usage-stats strong { display:block; margin-top:.3rem; font-size:1.75rem; }
+.my-usage-reminder { display:flex; align-items:center; gap:.8rem; padding:1rem 1.2rem; border-radius:14px; background:#fff6db; color:#70561d; margin-bottom:1.5rem; }
+.my-usage-reminder p { font-size:.875rem; line-height:1.6; margin:0; }
+.my-usage-detail { margin-top:1.5rem; font-size:.875rem; }
+.my-usage-detail .section-title h2 { font-size:1.1rem; }
+.account-form input:focus-visible,.account-form select:focus-visible { outline:2px solid #253613; outline-offset:2px; }
+@media(max-width:700px) { .account-role-grid,.my-usage-stats { grid-template-columns:1fr; } .account-role-grid { gap:.6rem; } .account-role-grid article { padding:1rem; } .login-card { padding:1.75rem 1.1rem; } .account-activity-head { flex-wrap:wrap; } .account-activity-head time { width:100%; margin-left:0; } .accounts-view .module-heading { align-items:stretch; } .account-profile { padding:1.4rem; } }
+
+.login-form,.password-change-form { width:100%; text-align:left; }
+.password-input { display:flex; align-items:center; position:relative; min-width:0; }
+.password-input input { padding-right:3rem; }
+.password-input .icon-button { position:absolute; right:4px; background:transparent; border:0; }
+.login-help { border:0; background:transparent; color:var(--ink); text-decoration:underline; font-size:.875rem; cursor:pointer; padding:.5rem; }
+.login-form .button { justify-content:center; min-height:46px; }
+.password-change-form { margin-bottom:1.5rem; }
+.account-profile h2 { font-size:1.1rem; text-align:left; margin-top:1.6rem; }

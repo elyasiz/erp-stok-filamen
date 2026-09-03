@@ -7,6 +7,12 @@ import { useState } from "react";
 import { ModuleView, type ViewId } from "@/components/modules";
 import DashboardView from "@/components/dashboard-view";
 import { useReports, type ReportState } from "@/components/report-state";
+import { AuthProvider, useAuth } from "@/components/auth-provider";
+import LoginView from "@/components/login-view";
+import { PasswordChangeScreen } from "@/components/password-form";
+import { initials, ProfileView } from "@/components/accounts-view";
+import MyUsageView from "@/components/my-usage-view";
+import { isStaff, roleLabels } from "@/lib/account-types";
 
 const navigation: Array<{ label: string; items: Array<{ label: string; icon: LucideIcon; view: ViewId; count?: string }> }> = [
   {
@@ -23,6 +29,7 @@ const navigation: Array<{ label: string; items: Array<{ label: string; icon: Luc
       { label: "Mulai penggunaan", icon: ScanLine, view: "usage-start" },
       { label: "Penggunaan aktif", icon: Clock3, view: "usage-active" },
       { label: "Selesaikan", icon: ClipboardCheck, view: "usage-complete" },
+      { label: "Penggunaan saya", icon: Clock3, view: "my-usage" },
     ],
   },
   {
@@ -30,7 +37,8 @@ const navigation: Array<{ label: string; items: Array<{ label: string; icon: Luc
     items: [
       { label: "Laporan", icon: BarChart3, view: "reports" },
       { label: "Riwayat stok", icon: History, view: "history" },
-      { label: "Pengguna & role", icon: Users, view: "users" },
+      { label: "Pengguna & hak akses", icon: Users, view: "users" },
+      { label: "Aktivitas pengguna", icon: History, view: "activity" },
     ],
   },
 ];
@@ -47,6 +55,9 @@ function Logo() {
 }
 
 function Sidebar({ open, activeView, onClose, onSelect, reports }: { reports: ReportState; open: boolean; activeView: ViewId; onClose: () => void; onSelect: (view: ViewId) => void }) {
+  const { user } = useAuth();
+  const allowed = (view: ViewId) => user && (view === "users" || view === "settings" ? user.role === "OWNER" : ["reports", "history", "receipt", "activity"].includes(view) ? isStaff(user) : true);
+  const groups = navigation.map(group => ({ ...group, items: group.items.filter(item => allowed(item.view)) })).filter(group => group.items.length);
   return (
     <>
       <div className={`sidebar-backdrop ${open ? "show" : ""}`} onClick={onClose} aria-hidden="true" />
@@ -59,7 +70,7 @@ function Sidebar({ open, activeView, onClose, onSelect, reports }: { reports: Re
         </div>
 
         <nav className="main-nav" aria-label="Navigasi utama">
-          {navigation.map((group) => (
+          {groups.map((group) => (
             <div className="nav-group" key={group.label}>
               <p>{group.label}</p>
               {group.items.map((item) => {
@@ -67,7 +78,7 @@ function Sidebar({ open, activeView, onClose, onSelect, reports }: { reports: Re
                 return (
                   <button className={`nav-item ${activeView === item.view ? "active" : ""}`} key={item.label} type="button" onClick={() => onSelect(item.view)}>
                     <Icon size={18} strokeWidth={1.8} />
-                    <span>{item.label}</span>
+                    <span>{user?.role === "COACH" && item.view === "dashboard" ? "Beranda saya" : user?.role === "COACH" && item.view === "usage-active" ? "Penggunaan aktif saya" : item.label}</span>
                     {item.count ? <em>{item.count}</em> : null}
                   </button>
                 );
@@ -77,36 +88,41 @@ function Sidebar({ open, activeView, onClose, onSelect, reports }: { reports: Re
         </nav>
 
         <div className="sidebar-footer">
-          <button className={`nav-item ${activeView === "settings" ? "active" : ""}`} type="button" onClick={() => onSelect("settings")}>
+          {user?.role === "OWNER" ? <button className={`nav-item ${activeView === "settings" ? "active" : ""}`} type="button" onClick={() => onSelect("settings")}>
             <Settings size={18} strokeWidth={1.8} />
             <span>Pengaturan</span>
-          </button>
-          <div className="storage-card">
+          </button> : null}
+          {user && isStaff(user) ? <div className="storage-card">
             <div className="storage-card-head">
               <span>Stok sehat</span>
               <strong>{reports.loading || !reports.data ? "—" : `${reports.data.summary.healthyPercent}%`}</strong>
             </div>
             <div className="storage-bar"><i style={{ width: `${reports.loading ? 0 : reports.data?.summary.healthyPercent ?? 0}%` }} /></div>
             <small>{reports.error ? "Data stok belum tersedia" : reports.loading || !reports.data ? "Memuat stok..." : `${reports.data.summary.attentionUnits} unit perlu perhatian`}</small>
-          </div>
+          </div> : null}
         </div>
       </aside>
     </>
   );
 }
 
-export default function Home() {
+function Workspace() {
+  const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [view, setView] = useState<ViewId>("dashboard");
-  const reports = useReports(view);
+  const reports = useReports(view, Boolean(user && isStaff(user)));
   const [usageSessionId, setUsageSessionId] = useState<string | null>(null);
   const selectView = (nextView: ViewId, sessionId?: string) => {
+    if (!user) return;
+    if (["users", "settings"].includes(nextView) && user.role !== "OWNER") return;
+    if (["receipt", "reports", "history", "activity"].includes(nextView) && !isStaff(user)) return;
     setView(nextView);
     setUsageSessionId(sessionId ?? null);
     setMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  if (!user) return null;
   return (
     <div className="app-shell">
       <Sidebar open={menuOpen} activeView={view} onClose={() => setMenuOpen(false)} onSelect={selectView} reports={reports} />
@@ -127,18 +143,18 @@ export default function Home() {
             </label>
           </div>
           <div className="topbar-actions">
-            <button className="icon-button notification" aria-label="Notifikasi"><Bell size={19} /></button>
+            <button className="icon-button notification" onClick={() => selectView("my-usage")} aria-label="Lihat penggunaan saya"><Bell size={19} /></button>
             <div className="divider" />
-            <button className="profile-button" type="button">
-              <span className="avatar">FE</span>
-              <span className="profile-copy"><strong>Admin TIDIGO</strong><small>Super Admin</small></span>
+            <button className="profile-button" type="button" onClick={() => selectView("profile")}>
+              <span className="avatar">{initials(user.name)}</span>
+              <span className="profile-copy"><strong>{user.name}</strong><small>{roleLabels[user.role]}</small></span>
               <ChevronDown size={16} />
             </button>
           </div>
         </header>
 
         <main className="dashboard">
-          {view === "dashboard" ? <DashboardView state={reports} onNavigate={selectView} /> : <ModuleView view={view} onNavigate={selectView} usageSessionId={usageSessionId} reports={reports} />}
+          {view === "profile" ? <ProfileView /> : view === "my-usage" || view === "dashboard" && user.role === "COACH" ? <MyUsageView onNavigate={selectView} /> : view === "dashboard" ? <DashboardView state={reports} onNavigate={selectView} /> : <ModuleView view={view} onNavigate={selectView} usageSessionId={usageSessionId} reports={reports} />}
         </main>
       </div>
 
@@ -146,3 +162,9 @@ export default function Home() {
     </div>
   );
 }
+
+function AuthenticatedApp() {
+  const { user } = useAuth();
+  return user ? user.mustChangePassword ? <PasswordChangeScreen /> : <Workspace key={`${user.id}-${user.role}`} /> : <LoginView />;
+}
+export default function Home() { return <AuthProvider><AuthenticatedApp /></AuthProvider>; }
