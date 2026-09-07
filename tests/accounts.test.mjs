@@ -27,9 +27,9 @@ before(async () => {
   load = file => {
     const filename=resolve(file.endsWith(".ts")?file:`src/lib/${file}.ts`);
     if(cache.has(filename)) return cache.get(filename);
-    const module={exports:{}}; cache.set(filename,module.exports);
+    const loadedModule={exports:{}}; cache.set(filename,loadedModule.exports);
     const code=ts.transpileModule(readFileSync(filename,"utf8"), { compilerOptions:{ module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022 } }).outputText;
-    runInNewContext(code,{ exports:module.exports, process:{env}, crypto:{randomUUID:nodeCrypto.randomUUID}, Date, Intl, Request, Response, URL, Buffer, Error,
+    runInNewContext(code,{ exports:loadedModule.exports, process:{env}, crypto:{randomUUID:nodeCrypto.randomUUID}, Date, Intl, Request, Response, URL, Buffer, Error,
       require: name => {
         if(name === "server-only") return {};
         if(name === "@neondatabase/serverless") return {neon:()=>sql};
@@ -40,7 +40,7 @@ before(async () => {
         throw Error(`Unexpected import ${name}`);
       }
     });
-    return module.exports;
+    return loadedModule.exports;
   };
   accounts=load("account-db"); usage=load("usage-db"); inventory=load("inventory-db"); auth=load("auth");
   await accounts.ensureAccountSchema(); await usage.ensureUsageSchema(); await load("receipts-db").ensureReceiptSchema();

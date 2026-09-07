@@ -45,6 +45,7 @@ type UsageRow = {
   total_starting_grams: string | number;
   total_used_grams: string | number;
   total_returned_grams: string | number;
+  colors: string[];
   result: UsageCompletionInput["result"] | null;
   notes: string;
 };
@@ -153,6 +154,7 @@ function mapUsage(row: UsageRow) {
     totalStartingGrams: Number(row.total_starting_grams),
     totalUsedGrams: Number(row.total_used_grams),
     totalReturnedGrams: Number(row.total_returned_grams),
+    colors: Array.isArray(row.colors) ? row.colors.map(String) : [],
     result: row.result,
     notes: row.notes,
   };
@@ -225,9 +227,15 @@ function usageQuery(id?: string, actor?: Actor, history = false) {
         select s.*, count(i.inventory_item_id)::int as unit_count,
           coalesce(sum(i.starting_grams), 0) as total_starting_grams,
           coalesce(sum(i.used_grams), 0) as total_used_grams,
-          coalesce(sum(i.returned_grams), 0) as total_returned_grams
+          coalesce(sum(i.returned_grams), 0) as total_returned_grams,
+          coalesce(
+            array_agg(distinct inv.color order by inv.color)
+              filter (where inv.color is not null and btrim(inv.color) <> ''),
+            array[]::text[]
+          ) as colors
         from usage_sessions s
         left join usage_session_items i on i.session_id = s.id
+        left join inventory_items inv on inv.id = i.inventory_item_id
         where s.id = ${id}
           and (${actor?.role !== "COACH"} or s.borrower_user_id = ${actor?.id ?? null}::uuid)
         group by s.id
@@ -236,9 +244,15 @@ function usageQuery(id?: string, actor?: Actor, history = false) {
         select s.*, count(i.inventory_item_id)::int as unit_count,
           coalesce(sum(i.starting_grams), 0) as total_starting_grams,
           coalesce(sum(i.used_grams), 0) as total_used_grams,
-          coalesce(sum(i.returned_grams), 0) as total_returned_grams
+          coalesce(sum(i.returned_grams), 0) as total_returned_grams,
+          coalesce(
+            array_agg(distinct inv.color order by inv.color)
+              filter (where inv.color is not null and btrim(inv.color) <> ''),
+            array[]::text[]
+          ) as colors
         from usage_sessions s
         left join usage_session_items i on i.session_id = s.id
+        left join inventory_items inv on inv.id = i.inventory_item_id
         where (${history} or s.status = 'ACTIVE')
           and (${actor?.role !== "COACH"} or s.borrower_user_id = ${actor?.id ?? null}::uuid)
         group by s.id

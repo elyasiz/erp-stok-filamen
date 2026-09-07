@@ -11,6 +11,7 @@ type UsageSummary = {
   userName: string;
   usageType: "CLASS" | "NON_CLASS";
   nonClassType: "TRIAL_PRINT" | "SAMPLE" | null;
+  colors: string[];
 };
 type UsageItem = {
   inventoryItemId: string;
@@ -38,6 +39,7 @@ type UsageDetail = UsageSummary & {
 const resultLabels: Record<UsageResult, string> = { SUCCESS: "Berhasil", PARTIAL: "Sebagian", FAILED: "Gagal", CANCELLED: "Dibatalkan" };
 const grams = (value: number) => value.toLocaleString("id-ID", { maximumFractionDigits: 2 });
 const typeLabel = (session: UsageSummary) => session.usageType === "CLASS" ? "Kelas" : session.nonClassType === "SAMPLE" ? "Nonkelas · Sample" : "Nonkelas · Trial Print";
+const colorLabel = (session: UsageSummary) => `Warna: ${session.colors.length ? session.colors.join(", ") : "—"}`;
 
 async function getSessions(signal?: AbortSignal): Promise<UsageSummary[]> {
   const response = await fetch("/api/v1/usages", { cache: "no-store", signal });
@@ -184,7 +186,7 @@ export default function CompleteUsageView({ initialSessionId, onOpenActive }: { 
       <div className="dialog-actions"><button className="button secondary" onClick={onOpenActive}>Lihat Penggunaan Aktif</button><button className="button primary" onClick={() => void startAnother()}>Selesaikan sesi lain</button></div>
     </section> : <>
       <section className="form-panel completion-picker">
-        <label className="stack-field"><span>Pilih sesi penggunaan aktif</span><select value={session?.id ?? ""} disabled={loading || saving || scanning} onChange={(event) => void selectSession(event.target.value)}><option value="">{loading ? "Memuat sesi..." : "Pilih sesi atau scan barcode di bawah"}</option>{sessions.map((entry) => <option key={entry.id} value={entry.id}>{entry.number} · {entry.userName} · {typeLabel(entry)}</option>)}</select></label>
+        <label className="stack-field"><span>Pilih sesi penggunaan aktif</span><select value={session?.id ?? ""} disabled={loading || saving || scanning} onChange={(event) => void selectSession(event.target.value)}><option value="">{loading ? "Memuat sesi..." : "Pilih sesi atau scan barcode di bawah"}</option>{sessions.map((entry) => <option key={entry.id} value={entry.id}>{entry.number} · {entry.userName} · {typeLabel(entry)} · {colorLabel(entry)}</option>)}</select></label>
         <div className="completion-scan"><label className="stack-field"><span>{session ? "Scan ulang barcode unit sesi ini" : "Cari sesi dari barcode unit"}</span><input aria-label="Barcode unit untuk penyelesaian" value={code} disabled={saving || loading || scanning} onChange={(event) => setCode(event.target.value.toUpperCase())} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void scanCode(); } }} placeholder="Scan USB atau ketik barcode label" /></label><button className="button secondary" disabled={saving || loading || scanning || !code.trim()} onClick={() => void scanCode()}>{scanning ? <LoaderCircle className="spin" size={16} /> : <ScanBarcode size={16} />} {session ? "Verifikasi" : "Cari sesi"}</button><button className="button primary" disabled={saving || loading || scanning} onClick={() => setCameraOpen(true)}><Camera size={16} /> Kamera</button></div>
         {notice ? <div className="info-strip" role="status"><CheckCircle2 size={17} />{notice}</div> : null}
       </section>

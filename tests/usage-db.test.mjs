@@ -45,12 +45,12 @@ before(async () => {
 beforeEach(async () => { await db.exec("TRUNCATE usage_session_items, usage_sessions, inventory_items CASCADE"); });
 after(async () => { await db.close(); });
 
-async function stock(weights = [1000, 700], statuses = []) {
+async function stock(weights = [1000, 700], statuses = [], colors = []) {
   const items = [];
   for (const [index, weight] of weights.entries()) {
     const item = { id: randomUUID(), code: `FLM-TEST-${index + 1}`, weight };
     await db.query(`INSERT INTO inventory_items (id, code, product, material, color, packaging_type, remaining_grams, status, unit_cost, supplier)
-      VALUES ($1, $2, 'Test filament', 'PLA', 'White', 'WITH_SPOOL', $3, $4, 100000, 'Test supplier')`, [item.id, item.code, weight, statuses[index] ?? "AVAILABLE"]);
+      VALUES ($1, $2, 'Test filament', 'PLA', $5, 'WITH_SPOOL', $3, $4, 100000, 'Test supplier')`, [item.id, item.code, weight, statuses[index] ?? "AVAILABLE", colors[index] ?? "White"]);
     items.push(item);
   }
   return items;
@@ -75,6 +75,14 @@ test("start and barcode lookup use the original session and borrower", async () 
   assert.equal(found.items.length, 2);
   assert.equal(found.items[0].startingGrams, 1000);
   assert.deepEqual((await balances()).map((row) => row.status), ["IN_USE", "IN_USE"]);
+});
+
+test("active session summaries include every distinct filament color", async () => {
+  const items = await stock([1000, 700, 500], [], ["Red", "Blue", "Red"]);
+  const session = await start(items);
+  assert.deepEqual(Array.from(session.colors), ["Blue", "Red"]);
+  const [active] = await usage.listActiveUsageSessions();
+  assert.deepEqual(Array.from(active.colors), ["Blue", "Red"]);
 });
 
 test("complete updates every balance, saves results, preserves barcodes and closes the session", async () => {
