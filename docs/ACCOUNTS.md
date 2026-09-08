@@ -33,6 +33,14 @@ Pratinjau sebaiknya menggunakan database terpisah. Jika pratinjau dan produksi m
 
 Peran dan status Owner dilindungi agar akses pengelolaan tetap tersedia. Owner dapat membuat Owner tambahan. Email akun yang sudah dibuat tidak diedit melalui editor pengguna.
 
+## Koreksi gram penggunaan
+
+- Koreksi hanya tersedia untuk sesi yang sudah selesai. Selama sesi masih aktif, angka dapat diperbaiki sebelum finalisasi.
+- Coach mengajukan koreksi dari detail **Penggunaan saya**. Permintaan tidak langsung mengubah stok.
+- Owner dan Admin dapat mengoreksi langsung dari detail laporan, serta menyetujui atau menolak permintaan Coach melalui **Koreksi penggunaan**.
+- Persetujuan menerapkan selisih gram ke saldo terkini dan memperbarui angka penggunaan untuk laporan. Angka sebelum/sesudah, alasan, pemohon, peninjau, dan waktu tetap tersimpan.
+- Koreksi tidak diterapkan jika unit sedang berada dalam sesi aktif, saldo tidak mencukupi, atau catatan penggunaan sudah berubah. Permintaan tetap menunggu sampai konflik diselesaikan atau ditolak.
+
 ## Penyimpanan dan pembatasan
 
 - Kata sandi di-hash dengan scrypt (N=65536, r=8, p=2), salt acak 16 byte, hasil 64 byte. Nilai asli tidak disimpan, dikirim balik melalui API, atau ditulis ke audit.

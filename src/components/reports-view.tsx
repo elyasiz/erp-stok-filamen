@@ -91,6 +91,6 @@ export default function ReportsView({ state, ledgerOnly = false }: { state: Repo
       {kind === "movements" ? <><Table headers={movementHeaders} rows={movements.map((item) => [movementDate(item), item.code, item.type, item.reference, <span key="change" className={item.change > 0 ? "positive-copy" : item.change < 0 ? "negative-copy" : ""}>{item.change > 0 ? "+" : ""}{formatNumber(item.change)}</span>, formatNumber(item.before), formatNumber(item.after), item.user ?? "Tidak tercatat"])} /><p className="report-note">Riwayat berasal dari penerimaan final untuk unit yang masih tercatat dan penggunaan selesai. Penambahan, perubahan, atau penghapusan stok manual belum memiliki catatan pergerakan. Tanggal barang masuk mengikuti tanggal diterima.</p></> : null}
     </section>
     <p className="report-updated">Diperbarui {formatDate(data.generatedAt)} WIB · CSV mengikuti laporan dan filter yang dipilih.</p>
-    {kind === "usages" && detailSession ? <UsageHistoryDetail key={detailSession.id} session={detailSession} onClose={() => setDetailSessionId(null)} /> : null}
+    {kind === "usages" && detailSession ? <UsageHistoryDetail key={detailSession.id} session={detailSession} onClose={() => setDetailSessionId(null)} onChanged={state.reload} /> : null}
   </>;
 }

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { neon } from "@neondatabase/serverless";
-import type { Actor } from "./account-types";
+import { isStaff, type Actor } from "./account-types";
 import { ensureAuditSchema } from "./audit-db";
 
 const usageTypes = ["CLASS", "NON_CLASS"] as const;
@@ -13,6 +13,16 @@ export type UsageCompletionInput = {
   result: (typeof completionResults)[number];
   notes: string;
   items: Array<{ inventoryItemId: string; barcode: string; usedGrams: number }>;
+};
+
+export type UsageCorrectionInput = {
+  reason: string;
+  items: Array<{ inventoryItemId: string; usedGrams: number }>;
+};
+
+export type UsageCorrectionReviewInput = {
+  decision: "APPROVE" | "REJECT";
+  note: string;
 };
 
 type UsageType = (typeof usageTypes)[number];
@@ -61,6 +71,30 @@ type UsageItemRow = {
   starting_grams: string | number;
   used_grams: string | number | null;
   returned_grams: string | number | null;
+};
+
+type UsageCorrectionRow = {
+  id: string;
+  session_id: string;
+  usage_number: string;
+  user_name: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  reason: string;
+  requested_by_user_id: string | null;
+  requested_by_name: string;
+  reviewed_by_user_id: string | null;
+  reviewed_by_name: string | null;
+  review_note: string;
+  created_at: string | Date;
+  reviewed_at: string | Date | null;
+  items: Array<{
+    inventoryItemId: string;
+    code: string;
+    product: string;
+    color: string;
+    beforeUsedGrams: string | number;
+    afterUsedGrams: string | number;
+  }>;
 };
 
 let usageSchemaReady: Promise<void> | null = null;
@@ -128,6 +162,32 @@ export async function ensureUsageSchema() {
       await sql`alter table usage_sessions add column if not exists completed_by_name text`;
       await sql`alter table usage_sessions add column if not exists activity_name text not null default ''`;
       await sql`create index if not exists usage_sessions_borrower_idx on usage_sessions(borrower_user_id, started_at desc)`;
+      await sql`
+        create table if not exists usage_corrections (
+          id uuid primary key,
+          session_id uuid not null references usage_sessions(id) on delete restrict,
+          status text not null default 'PENDING' check (status in ('PENDING', 'APPROVED', 'REJECTED')),
+          reason text not null,
+          requested_by_user_id uuid,
+          requested_by_name text not null,
+          reviewed_by_user_id uuid,
+          reviewed_by_name text,
+          review_note text not null default '',
+          created_at timestamptz not null default now(),
+          reviewed_at timestamptz
+        )
+      `;
+      await sql`
+        create table if not exists usage_correction_items (
+          correction_id uuid not null references usage_corrections(id) on delete cascade,
+          inventory_item_id uuid not null references inventory_items(id) on delete restrict,
+          before_used_grams numeric(12,2) not null check (before_used_grams >= 0),
+          after_used_grams numeric(12,2) not null check (after_used_grams >= 0),
+          primary key (correction_id, inventory_item_id)
+        )
+      `;
+      await sql`create unique index if not exists usage_corrections_one_pending_idx on usage_corrections(session_id) where status = 'PENDING'`;
+      await sql`create index if not exists usage_corrections_status_time_idx on usage_corrections(status, created_at desc)`;
     })().catch((error) => {
       usageSchemaReady = null;
       throw error;
@@ -157,6 +217,33 @@ function mapUsage(row: UsageRow) {
     colors: Array.isArray(row.colors) ? row.colors.map(String) : [],
     result: row.result,
     notes: row.notes,
+  };
+}
+
+function mapUsageCorrection(row: UsageCorrectionRow) {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    sessionNumber: row.usage_number,
+    userName: row.user_name,
+    status: row.status,
+    reason: row.reason,
+    requestedByUserId: row.requested_by_user_id,
+    requestedByName: row.requested_by_name,
+    reviewedByUserId: row.reviewed_by_user_id,
+    reviewedByName: row.reviewed_by_name,
+    reviewNote: row.review_note,
+    createdAt: new Date(row.created_at).toISOString(),
+    reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
+    items: (Array.isArray(row.items) ? row.items : []).map((item) => ({
+      inventoryItemId: item.inventoryItemId,
+      code: item.code,
+      product: item.product,
+      color: item.color,
+      beforeUsedGrams: Number(item.beforeUsedGrams),
+      afterUsedGrams: Number(item.afterUsedGrams),
+      stockDeltaGrams: Number(item.beforeUsedGrams) - Number(item.afterUsedGrams),
+    })),
   };
 }
 
@@ -207,6 +294,37 @@ export function parseUsageCompletionInput(value: unknown): UsageCompletionInput 
   });
   if (new Set(items.map((item) => item.inventoryItemId)).size !== items.length) throw new Error("Unit tidak boleh dikirim dua kali.");
   return { result, notes, items };
+}
+
+export function parseUsageCorrectionInput(value: unknown): UsageCorrectionInput {
+  if (!value || typeof value !== "object") throw new Error("Data koreksi tidak valid.");
+  const input = value as Record<string, unknown>;
+  const reason = String(input.reason ?? "").trim();
+  if (reason.length < 3 || reason.length > 500) throw new Error("Isi alasan koreksi, 3–500 karakter.");
+  if (!Array.isArray(input.items) || !input.items.length || input.items.length > 20) throw new Error("Lengkapi gram koreksi untuk seluruh unit sesi.");
+  const items = input.items.map((raw) => {
+    if (!raw || typeof raw !== "object") throw new Error("Data unit koreksi tidak valid.");
+    const item = raw as Record<string, unknown>;
+    const inventoryItemId = String(item.inventoryItemId ?? "").trim().toLowerCase();
+    const usedGrams = item.usedGrams;
+    if (!uuidPattern.test(inventoryItemId)) throw new Error("Identitas unit koreksi tidak valid.");
+    if (typeof usedGrams !== "number" || !Number.isFinite(usedGrams) || usedGrams < 0 || usedGrams > 100000 || Math.abs(usedGrams * 100 - Math.round(usedGrams * 100)) > 0.000001) {
+      throw new Error("Gram koreksi wajib berupa angka 0–100.000, maksimal 2 angka desimal.");
+    }
+    return { inventoryItemId, usedGrams };
+  });
+  if (new Set(items.map((item) => item.inventoryItemId)).size !== items.length) throw new Error("Unit koreksi tidak boleh dikirim dua kali.");
+  return { reason, items };
+}
+
+export function parseUsageCorrectionReviewInput(value: unknown): UsageCorrectionReviewInput {
+  if (!value || typeof value !== "object") throw new Error("Data peninjauan tidak valid.");
+  const input = value as Record<string, unknown>;
+  const decision = String(input.decision ?? "") as UsageCorrectionReviewInput["decision"];
+  const note = String(input.note ?? "").trim();
+  if (!(["APPROVE", "REJECT"] as const).includes(decision)) throw new Error("Keputusan koreksi tidak valid.");
+  if (note.length > 500 || (decision === "REJECT" && note.length < 3)) throw new Error("Isi alasan penolakan, 3–500 karakter.");
+  return { decision, note };
 }
 
 function usageNumber(id: string) {
@@ -315,6 +433,187 @@ export async function listMyUsageSessions(actor: Actor) {
   await ensureUsageSchema();
   const rows = await usageQuery(undefined, { ...actor, role: "COACH" }, true);
   return (rows as UsageRow[]).map(mapUsage);
+}
+
+export async function listUsageCorrections(actor: Actor, sessionId?: string) {
+  if (sessionId && !uuidPattern.test(sessionId)) throw new Error("Nomor sesi tidak valid.");
+  if (!sessionId && !isStaff(actor)) throw new Error("FORBIDDEN");
+  await ensureUsageSchema();
+  const sql = getSql();
+  const rows = await sql`
+    select c.*, s.usage_number, s.user_name,
+      coalesce(
+        json_agg(json_build_object(
+          'inventoryItemId', ci.inventory_item_id,
+          'code', inv.code,
+          'product', inv.product,
+          'color', inv.color,
+          'beforeUsedGrams', ci.before_used_grams,
+          'afterUsedGrams', ci.after_used_grams
+        ) order by inv.code) filter (where ci.inventory_item_id is not null),
+        '[]'::json
+      ) as items
+    from usage_corrections c
+    join usage_sessions s on s.id = c.session_id
+    left join usage_correction_items ci on ci.correction_id = c.id
+    left join inventory_items inv on inv.id = ci.inventory_item_id
+    where (${sessionId === undefined} or c.session_id = ${sessionId ?? null}::uuid)
+      and (${actor.role !== "COACH"} or s.borrower_user_id = ${actor.id}::uuid)
+    group by c.id, s.id
+    order by case when c.status = 'PENDING' then 0 else 1 end, c.created_at desc
+    limit 200
+  `;
+  return (rows as UsageCorrectionRow[]).map(mapUsageCorrection);
+}
+
+export async function createUsageCorrection(sessionId: string, input: UsageCorrectionInput, actor: Actor) {
+  const session = await getUsageSession(sessionId, actor);
+  if (!session) throw new Error("USAGE_NOT_FOUND");
+  if (session.status !== "COMPLETED") throw new Error("CORRECTION_SESSION_NOT_COMPLETED");
+  if (input.items.length !== session.items.length) throw new Error("CORRECTION_ITEMS_MISMATCH");
+  const currentById = new Map(session.items.map((item) => [item.inventoryItemId, item]));
+  const changes = input.items.map((item) => {
+    const current = currentById.get(item.inventoryItemId);
+    if (!current || current.usedGrams === null || item.usedGrams > current.startingGrams) throw new Error("CORRECTION_ITEMS_MISMATCH");
+    return { inventoryItemId: item.inventoryItemId, beforeUsedGrams: current.usedGrams, afterUsedGrams: item.usedGrams };
+  });
+  if (changes.every((item) => item.beforeUsedGrams === item.afterUsedGrams)) throw new Error("CORRECTION_NO_CHANGE");
+
+  await ensureUsageSchema();
+  const sql = getSql();
+  const id = crypto.randomUUID();
+  const requestedItems = JSON.stringify(changes);
+  const rows = await sql`
+    with requested as (
+      select * from jsonb_to_recordset(${requestedItems}::jsonb)
+      as item("inventoryItemId" uuid, "beforeUsedGrams" numeric, "afterUsedGrams" numeric)
+    ), valid_items as (
+      select item.*, usage_item.starting_grams
+      from requested item
+      join usage_session_items usage_item on usage_item.session_id = ${sessionId} and usage_item.inventory_item_id = item."inventoryItemId"
+      where usage_item.used_grams = item."beforeUsedGrams"
+        and item."afterUsedGrams" between 0 and usage_item.starting_grams
+    ), created as (
+      insert into usage_corrections(id, session_id, reason, requested_by_user_id, requested_by_name)
+      select ${id}, ${sessionId}, ${input.reason}, ${actor.id}, ${actor.name}
+      where (select count(*) from valid_items) = ${changes.length}
+        and not exists (select 1 from usage_corrections where session_id = ${sessionId} and status = 'PENDING')
+      returning id
+    ), created_items as (
+      insert into usage_correction_items(correction_id, inventory_item_id, before_used_grams, after_used_grams)
+      select created.id, item."inventoryItemId", item."beforeUsedGrams", item."afterUsedGrams"
+      from created cross join valid_items item
+      returning inventory_item_id
+    ), logged as (
+      insert into audit_events(id, actor_user_id, actor_name, action, entity_type, entity_id, reason, before_data, after_data)
+      select ${crypto.randomUUID()}, ${actor.id}, ${actor.name}, 'USAGE_CORRECTION_REQUESTED', 'usage', ${sessionId}, ${input.reason},
+        ${JSON.stringify(changes.map((item) => ({ inventoryItemId: item.inventoryItemId, usedGrams: item.beforeUsedGrams })))}::jsonb,
+        ${JSON.stringify(changes.map((item) => ({ inventoryItemId: item.inventoryItemId, usedGrams: item.afterUsedGrams })))}::jsonb
+      from created where (select count(*) from created_items) = ${changes.length}
+      returning id
+    )
+    select id from created where (select count(*) from logged) = 1
+  `;
+  if (!rows[0]) throw new Error("CORRECTION_REQUEST_CONFLICT");
+  if (isStaff(actor)) return reviewUsageCorrection(id, { decision: "APPROVE", note: "" }, actor);
+  return (await listUsageCorrections(actor, sessionId)).find((item) => item.id === id)!;
+}
+
+export async function reviewUsageCorrection(id: string, input: UsageCorrectionReviewInput, actor: Actor) {
+  if (!uuidPattern.test(id)) throw new Error("Koreksi tidak valid.");
+  if (!isStaff(actor)) throw new Error("FORBIDDEN");
+  await ensureUsageSchema();
+  const sql = getSql();
+  const pointer = await sql`select session_id from usage_corrections where id = ${id}`;
+  const existing = pointer[0] ? (await listUsageCorrections(actor, String(pointer[0].session_id))).find((item) => item.id === id) : undefined;
+  if (!existing) throw new Error("CORRECTION_NOT_FOUND");
+  if (existing.status !== "PENDING") throw new Error("CORRECTION_ALREADY_REVIEWED");
+
+  if (input.decision === "REJECT") {
+    const rows = await sql`
+      with rejected as (
+        update usage_corrections set status = 'REJECTED', reviewed_by_user_id = ${actor.id}, reviewed_by_name = ${actor.name},
+          review_note = ${input.note}, reviewed_at = now()
+        where id = ${id} and status = 'PENDING'
+        returning id, session_id
+      ), logged as (
+        insert into audit_events(id, actor_user_id, actor_name, action, entity_type, entity_id, reason, before_data, after_data)
+        select ${crypto.randomUUID()}, ${actor.id}, ${actor.name}, 'USAGE_CORRECTION_REJECTED', 'usage', session_id::text, ${input.note},
+          ${JSON.stringify({ correctionId: id, status: "PENDING" })}::jsonb,
+          ${JSON.stringify({ correctionId: id, status: "REJECTED" })}::jsonb
+        from rejected returning id
+      ) select id from rejected where (select count(*) from logged) = 1
+    `;
+    if (!rows[0]) throw new Error("CORRECTION_ALREADY_REVIEWED");
+    return (await listUsageCorrections(actor)).find((item) => item.id === id)!;
+  }
+
+  const rows = await sql`
+    with target as (
+      select correction.id, correction.session_id
+      from usage_corrections correction
+      join usage_sessions session on session.id = correction.session_id and session.status = 'COMPLETED'
+      where correction.id = ${id} and correction.status = 'PENDING'
+      for update
+    ), correction_items as (
+      select item.*, usage_item.starting_grams, usage_item.used_grams, inventory.remaining_grams, inventory.status as inventory_status
+      from usage_correction_items item
+      join target on target.id = item.correction_id
+      join usage_session_items usage_item on usage_item.session_id = target.session_id and usage_item.inventory_item_id = item.inventory_item_id
+      join inventory_items inventory on inventory.id = item.inventory_item_id
+    ), locked_inventory as (
+      select inventory.id
+      from inventory_items inventory join correction_items item on item.inventory_item_id = inventory.id
+      order by inventory.id for update
+    ), ready as (
+      select target.* from target
+      where (select count(*) from correction_items) > 0
+        and (select count(*) from locked_inventory) = (select count(*) from correction_items)
+        and not exists (
+          select 1 from correction_items item
+          where item.used_grams is distinct from item.before_used_grams
+            or item.after_used_grams > item.starting_grams
+            or item.inventory_status = 'IN_USE'
+            or item.remaining_grams + item.before_used_grams - item.after_used_grams < 0
+        )
+    ), updated_inventory as (
+      update inventory_items inventory
+      set remaining_grams = inventory.remaining_grams + item.before_used_grams - item.after_used_grams,
+        status = case
+          when inventory.status in ('DAMAGED', 'INACTIVE') then inventory.status
+          when inventory.remaining_grams + item.before_used_grams - item.after_used_grams <= 0 then 'EMPTY'
+          when inventory.remaining_grams + item.before_used_grams - item.after_used_grams < 500 then 'LOW_STOCK'
+          else 'AVAILABLE'
+        end,
+        updated_at = now()
+      from correction_items item, ready
+      where inventory.id = item.inventory_item_id
+      returning inventory.id
+    ), updated_usage_items as (
+      update usage_session_items usage_item
+      set used_grams = item.after_used_grams, returned_grams = usage_item.starting_grams - item.after_used_grams
+      from correction_items item, ready
+      where usage_item.session_id = ready.session_id and usage_item.inventory_item_id = item.inventory_item_id
+      returning usage_item.inventory_item_id
+    ), approved as (
+      update usage_corrections correction
+      set status = 'APPROVED', reviewed_by_user_id = ${actor.id}, reviewed_by_name = ${actor.name},
+        review_note = ${input.note}, reviewed_at = now()
+      from ready
+      where correction.id = ready.id
+        and (select count(*) from updated_inventory) = (select count(*) from correction_items)
+        and (select count(*) from updated_usage_items) = (select count(*) from correction_items)
+      returning correction.id, correction.session_id
+    ), logged as (
+      insert into audit_events(id, actor_user_id, actor_name, action, entity_type, entity_id, reason, before_data, after_data)
+      select ${crypto.randomUUID()}, ${actor.id}, ${actor.name}, 'USAGE_CORRECTION_APPROVED', 'usage', session_id::text, ${existing.reason},
+        ${JSON.stringify(existing.items.map((item) => ({ code: item.code, usedGrams: item.beforeUsedGrams })))}::jsonb,
+        ${JSON.stringify(existing.items.map((item) => ({ code: item.code, usedGrams: item.afterUsedGrams, stockDeltaGrams: item.stockDeltaGrams })))}::jsonb
+      from approved returning id
+    ) select id from approved where (select count(*) from logged) = 1
+  `;
+  if (!rows[0]) throw new Error("CORRECTION_APPLY_CONFLICT");
+  return (await listUsageCorrections(actor)).find((item) => item.id === id)!;
 }
 
 export async function createUsageSession(input: UsageInput, actor?: Actor) {

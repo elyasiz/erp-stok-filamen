@@ -768,3 +768,28 @@ button { color: inherit; }
 .login-form .button { justify-content:center; min-height:46px; }
 .password-change-form { margin-bottom:1.5rem; }
 .account-profile h2 { font-size:1.1rem; text-align:left; margin-top:1.6rem; }
+.usage-correction-panel { margin-top:1.25rem; border:1px solid var(--line); border-radius:16px; background:#f9fbf8; padding:1.1rem; }
+.usage-correction-panel .section-title { margin-bottom:.9rem; }
+.usage-correction-panel .section-title h3 { margin:0; }
+.usage-correction-panel .section-title p { margin:.3rem 0 0; color:var(--muted); font-size:.82rem; }
+.correction-loading { display:flex; align-items:center; gap:.5rem; color:var(--muted); }
+.correction-pending { display:grid; gap:.35rem; border:1px solid #d8c984; border-radius:12px; background:#fff9df; padding:1rem; color:#68531d; }
+.correction-pending span,.correction-pending small { font-size:.8rem; }
+.correction-pending p { margin:.2rem 0; }
+.correction-form { display:grid; gap:1rem; }
+.correction-form .data-table input { width:130px; min-height:40px; border:1px solid var(--line); border-radius:9px; padding:.45rem .65rem; font:inherit; }
+.correction-preview { display:flex; align-items:center; gap:.6rem; border-radius:11px; background:#edf8dc; color:#526f18; padding:.8rem 1rem; font-weight:700; }
+.correction-history { margin-top:1rem; border-top:1px solid var(--line); padding-top:1rem; }
+.correction-history summary { cursor:pointer; font-weight:700; }
+.correction-history article { display:grid; gap:.35rem; margin-top:.75rem; border-radius:11px; background:white; padding:.8rem; }
+.correction-history .status { justify-self:start; }
+.correction-history p { margin:0; }
+.correction-filter { display:flex; flex-wrap:wrap; gap:.65rem; margin-bottom:1rem; }
+.correction-list { display:grid; gap:1rem; }
+.correction-card { display:grid; gap:1rem; border:1px solid var(--line); border-radius:17px; background:white; padding:1.25rem; }
+.correction-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
+.correction-card-head h2 { margin:.55rem 0 .2rem; font-size:1.05rem; overflow-wrap:anywhere; }
+.correction-card-head p,.correction-reviewed { margin:0; color:var(--muted); font-size:.82rem; line-height:1.55; }
+.correction-reason { margin:0; border-left:3px solid var(--lime); padding:.35rem .75rem; }
+.correction-card .stack-field { max-width:650px; }
+.button.danger { border-color:#e8bbb2; color:#a9483e; background:#fff4f2; }

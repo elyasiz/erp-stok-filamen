@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Bell, Boxes, ChevronDown, ClipboardCheck, Clock3, History, LayoutDashboard, Menu, PackagePlus, Plus, ScanBarcode, ScanLine, Search, Settings, Users, X } from "lucide-react";
+import { BarChart3, Bell, Boxes, ChevronDown, ClipboardCheck, ClipboardPenLine, Clock3, History, LayoutDashboard, Menu, PackagePlus, Plus, ScanBarcode, ScanLine, Search, Settings, Users, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -37,6 +37,7 @@ const navigation: Array<{ label: string; items: Array<{ label: string; icon: Luc
     items: [
       { label: "Laporan", icon: BarChart3, view: "reports" },
       { label: "Riwayat stok", icon: History, view: "history" },
+      { label: "Koreksi penggunaan", icon: ClipboardPenLine, view: "corrections" },
       { label: "Pengguna & hak akses", icon: Users, view: "users" },
       { label: "Aktivitas pengguna", icon: History, view: "activity" },
     ],
@@ -80,7 +81,7 @@ function Sidebar({ open, activeView, onClose, onSelect, reports }: { reports: Re
       if (previousFocus?.getClientRects().length) previousFocus.focus();
     };
   }, [open, onClose]);
-  const allowed = (view: ViewId) => user && (view === "users" || view === "settings" ? user.role === "OWNER" : ["reports", "history", "receipt", "activity"].includes(view) ? isStaff(user) : true);
+  const allowed = (view: ViewId) => user && (view === "users" || view === "settings" ? user.role === "OWNER" : ["reports", "history", "receipt", "activity", "corrections"].includes(view) ? isStaff(user) : true);
   const groups = navigation.map(group => ({ ...group, items: group.items.filter(item => allowed(item.view)) })).filter(group => group.items.length);
   return (
     <>
@@ -140,7 +141,7 @@ function Workspace() {
   const selectView = (nextView: ViewId, sessionId?: string) => {
     if (!user) return;
     if (["users", "settings"].includes(nextView) && user.role !== "OWNER") return;
-    if (["receipt", "reports", "history", "activity"].includes(nextView) && !isStaff(user)) return;
+    if (["receipt", "reports", "history", "activity", "corrections"].includes(nextView) && !isStaff(user)) return;
     setView(nextView);
     setUsageSessionId(sessionId ?? null);
     setMenuOpen(false);

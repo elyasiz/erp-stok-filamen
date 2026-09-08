@@ -26,6 +26,7 @@ before(async () => {
     require: (name) => {
       if (name === "server-only") return {};
       if (name === "@neondatabase/serverless") return { neon: () => sql };
+      if (name === "./account-types") return { isStaff: user => user?.role === "OWNER" || user?.role === "ADMIN" };
       if (name === "./audit-db") {
         const audit = { exports: {} };
         const source = ts.transpileModule(readFileSync(resolve("src/lib/audit-db.ts"), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -203,4 +204,71 @@ test("finished units can be used in a new session with their new starting balanc
   assert.equal(second.items[0].startingGrams, 800);
   assert.notEqual(second.id, first.id);
   assert.equal((await usage.getUsageSession(first.id)).items[0].returnedGrams, 800);
+});
+
+test("coach correction waits for staff approval and applies only the gram difference", async () => {
+  const coach = { id: randomUUID(), name: "Coach Test", role: "COACH" };
+  const admin = { id: randomUUID(), name: "Admin Test", role: "ADMIN" };
+  const items = await stock([1000]);
+  const session = await usage.createUsageSession({ ...usage.parseUsageInput({ userName: coach.name, usageType: "CLASS", inventoryItemIds: [items[0].id] }), borrowerUserId: coach.id }, coach);
+  await usage.completeUsageSession(session.id, completion(items, [100]), coach);
+  const pending = await usage.createUsageCorrection(session.id, usage.parseUsageCorrectionInput({ reason: "Salah ketik hasil timbang", items: [{ inventoryItemId: items[0].id, usedGrams: 80 }] }), coach);
+  assert.equal(pending.status, "PENDING");
+  assert.equal((await balances())[0].grams, "900.00");
+  assert.equal((await usage.listUsageCorrections(coach, session.id)).length, 1);
+  assert.equal((await usage.listUsageCorrections({ ...coach, id: randomUUID() }, session.id)).length, 0);
+
+  const approved = await usage.reviewUsageCorrection(pending.id, { decision: "APPROVE", note: "Sesuai bukti timbang" }, admin);
+  assert.equal(approved.status, "APPROVED");
+  assert.equal(approved.items[0].stockDeltaGrams, 20);
+  assert.equal((await balances())[0].grams, "920.00");
+  const corrected = await usage.getUsageSession(session.id, coach);
+  assert.equal(corrected.items[0].usedGrams, 80);
+  assert.equal(corrected.items[0].returnedGrams, 920);
+  const events = await db.query("SELECT action, actor_name, reason FROM audit_events WHERE entity_id = $1 ORDER BY created_at", [session.id]);
+  assert.ok(events.rows.some((event) => event.action === "USAGE_CORRECTION_REQUESTED" && event.actor_name === coach.name && event.reason === "Salah ketik hasil timbang"));
+  assert.ok(events.rows.some((event) => event.action === "USAGE_CORRECTION_APPROVED" && event.actor_name === admin.name));
+  await assert.rejects(usage.reviewUsageCorrection(pending.id, { decision: "APPROVE", note: "" }, admin), /CORRECTION_ALREADY_REVIEWED/);
+  assert.equal((await balances())[0].grams, "920.00");
+});
+
+test("staff correction applies immediately and rejected requests never change stock", async () => {
+  const admin = { id: randomUUID(), name: "Admin Test", role: "ADMIN" };
+  const coach = { id: randomUUID(), name: "Coach Test", role: "COACH" };
+  const firstItems = await stock([1000]);
+  const first = await usage.createUsageSession({ ...usage.parseUsageInput({ userName: admin.name, usageType: "CLASS", inventoryItemIds: [firstItems[0].id] }), borrowerUserId: admin.id }, admin);
+  await usage.completeUsageSession(first.id, completion(firstItems, [100]), admin);
+  const applied = await usage.createUsageCorrection(first.id, usage.parseUsageCorrectionInput({ reason: "Koreksi langsung admin", items: [{ inventoryItemId: firstItems[0].id, usedGrams: 120 }] }), admin);
+  assert.equal(applied.status, "APPROVED");
+  assert.equal((await balances())[0].grams, "880.00");
+
+  await db.exec("TRUNCATE usage_correction_items, usage_corrections, usage_session_items, usage_sessions, inventory_items CASCADE");
+  const secondItems = await stock([500]);
+  const second = await usage.createUsageSession({ ...usage.parseUsageInput({ userName: coach.name, usageType: "CLASS", inventoryItemIds: [secondItems[0].id] }), borrowerUserId: coach.id }, coach);
+  await usage.completeUsageSession(second.id, completion(secondItems, [50]), coach);
+  const pending = await usage.createUsageCorrection(second.id, usage.parseUsageCorrectionInput({ reason: "Perlu dicek ulang", items: [{ inventoryItemId: secondItems[0].id, usedGrams: 40 }] }), coach);
+  const rejected = await usage.reviewUsageCorrection(pending.id, { decision: "REJECT", note: "Bukti timbang tidak sesuai" }, admin);
+  assert.equal(rejected.status, "REJECTED");
+  assert.equal((await balances())[0].grams, "450.00");
+  assert.equal((await usage.getUsageSession(second.id, coach)).items[0].usedGrams, 50);
+});
+
+test("approval waits while a corrected unit is in another active session", async () => {
+  const coach = { id: randomUUID(), name: "Coach Test", role: "COACH" };
+  const admin = { id: randomUUID(), name: "Admin Test", role: "ADMIN" };
+  const items = await stock([1000]);
+  const completed = await usage.createUsageSession({ ...usage.parseUsageInput({ userName: coach.name, usageType: "CLASS", inventoryItemIds: [items[0].id] }), borrowerUserId: coach.id }, coach);
+  await usage.completeUsageSession(completed.id, completion(items, [100]), coach);
+  await usage.createUsageSession({ ...usage.parseUsageInput({ userName: coach.name, usageType: "CLASS", inventoryItemIds: [items[0].id] }), borrowerUserId: coach.id }, coach);
+  const pending = await usage.createUsageCorrection(completed.id, usage.parseUsageCorrectionInput({ reason: "Salah input", items: [{ inventoryItemId: items[0].id, usedGrams: 80 }] }), coach);
+  await assert.rejects(usage.reviewUsageCorrection(pending.id, { decision: "APPROVE", note: "" }, admin), /CORRECTION_APPLY_CONFLICT/);
+  assert.equal((await balances())[0].grams, "900.00");
+  assert.equal((await usage.listUsageCorrections(admin)).find((item) => item.id === pending.id).status, "PENDING");
+});
+
+test("correction validation requires a reason, exact decimals and a real change", async () => {
+  const id = randomUUID();
+  assert.throws(() => usage.parseUsageCorrectionInput({ reason: "", items: [{ inventoryItemId: id, usedGrams: 1 }] }), /alasan koreksi/);
+  assert.throws(() => usage.parseUsageCorrectionInput({ reason: "Salah", items: [{ inventoryItemId: id, usedGrams: 0.001 }] }), /Gram koreksi/);
+  assert.throws(() => usage.parseUsageCorrectionReviewInput({ decision: "REJECT", note: "" }), /alasan penolakan/);
 });

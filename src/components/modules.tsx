@@ -29,6 +29,7 @@ import ReportsView from "./reports-view";
 import type { ReportState } from "./report-state";
 import { useAuth } from "./auth-provider";
 import { AccountsView, ActivityView } from "./accounts-view";
+import UsageCorrectionsView from "./usage-corrections-view";
 import { isStaff } from "@/lib/account-types";
 
 export type ViewId =
@@ -42,6 +43,7 @@ export type ViewId =
   | "history"
   | "users"
   | "activity"
+  | "corrections"
   | "my-usage"
   | "profile"
   | "settings";
@@ -565,5 +567,6 @@ export function ModuleView({ view, onNavigate, usageSessionId, reports }: { repo
   if (view === "history") return <ReportsView state={reports} ledgerOnly />;
   if (view === "users") return <AccountsView />;
   if (view === "activity") return <ActivityView />;
+  if (view === "corrections") return <UsageCorrectionsView />;
   return <SettingsView />;
 }

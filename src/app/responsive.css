@@ -191,6 +191,9 @@
   .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; gap: .5rem; padding: .75rem; }
   .steps li { min-height: 44px; height: auto; }
   .steps li::after { display: none; }
+  .correction-card { padding: 1rem; }
+  .correction-card .dialog-actions { align-items: stretch; flex-direction: column-reverse; }
+  .correction-card .dialog-actions .button { width: 100%; }
 }
 
 @media screen and (max-width: 600px) {
@@ -240,6 +243,8 @@
   .usage-summary > div + div { border-top: 1px solid var(--line); border-left: 0; }
   .account-profile dl > div { flex-direction: column; gap: .35rem; }
   .report-period .button { grid-column: 1 / -1; }
+  .correction-filter .button { flex: 1 1 100%; }
+  .usage-correction-panel { padding: .85rem; }
 }
 
 @media screen and (max-height: 600px) {

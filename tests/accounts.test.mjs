@@ -91,14 +91,14 @@ test("email/password accepts ordinary addresses and protects Owner roles",async(
 
 test("all data routes reject anonymous requests before reading or changing stock",async()=> {
   const id=nodeCrypto.randomUUID();
-  for(const [file,methods] of [["inventory",["GET","POST"]],["inventory/[id]",["GET","PATCH","DELETE"]],["receipts",["GET","POST"]],["receipts/[id]",["GET","PATCH","DELETE"]],["usages",["GET","POST"]],["usages/[id]",["GET"]],["usages/[id]/complete",["POST"]],["reports",["GET"]],["users",["GET","POST"]],["users/[id]",["PATCH"]],["activity",["GET"]],["my-usage",["GET"]]]) {
+  for(const [file,methods] of [["inventory",["GET","POST"]],["inventory/[id]",["GET","PATCH","DELETE"]],["receipts",["GET","POST"]],["receipts/[id]",["GET","PATCH","DELETE"]],["usages",["GET","POST"]],["usages/[id]",["GET"]],["usages/[id]/complete",["POST"]],["usages/[id]/corrections",["GET","POST"]],["usage-corrections",["GET"]],["usage-corrections/[id]",["PATCH"]],["reports",["GET"]],["users",["GET","POST"]],["users/[id]",["PATCH"]],["activity",["GET"]],["my-usage",["GET"]]]) {
     const route=load(`src/app/api/v1/${file}/route.ts`);
     for(const method of methods) assert.equal((await route[method](request(`/api/v1/${file.replace('[id]',id)}`,method,method==="GET"?undefined:{}),context(id))).status,401,`${method} ${file}`);
   }
 });
 test("coach cannot access administration or costs; forged borrower and cross-origin writes fail",async()=> {
   const root=await owner(); const coach=await addUser(root.user); const item=await stock(root.user); await login(coach.email);
-  for(const file of ["reports","receipts","users","activity"]) assert.equal((await load(`src/app/api/v1/${file}/route.ts`).GET(request(`/api/v1/${file}`))).status,403,file);
+  for(const file of ["reports","receipts","users","activity","usage-corrections"]) assert.equal((await load(`src/app/api/v1/${file}/route.ts`).GET(request(`/api/v1/${file}`))).status,403,file);
   assert.equal((await load("src/app/api/v1/inventory/route.ts").POST(request("/api/v1/inventory","POST",{}))).status,403);
   const read=await load("src/app/api/v1/inventory/route.ts").GET(request("/api/v1/inventory")); assert.equal((await read.json()).items[0].unitCost,null);
   const start=load("src/app/api/v1/usages/route.ts");

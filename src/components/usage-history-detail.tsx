@@ -4,12 +4,13 @@ import { Download, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { resultLabels, sessionStatusLabels, toCsv, type ReportsData } from "@/lib/report-data";
 import { formatDate, formatMoney, formatNumber } from "./report-state";
+import UsageCorrectionPanel from "./usage-correction-panel";
 
 type UsageSession = ReportsData["usages"][number];
 const grams = (value: number | null) => value === null ? "Belum tercatat" : `${formatNumber(value)} g`;
 const packaging = (value: string | null) => value === "WITH_SPOOL" ? "With Spool" : value === "REFILL" ? "Refill" : "Tidak tercatat";
 
-export default function UsageHistoryDetail({ session, onClose }: { session: UsageSession; onClose: () => void }) {
+export default function UsageHistoryDetail({ session, onClose, onChanged }: { session: UsageSession; onClose: () => void; onChanged?: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -85,6 +86,7 @@ export default function UsageHistoryDetail({ session, onClose }: { session: Usag
           <p className="report-note">Gram awal dan sisa setelah sesi berasal dari catatan sesi ini. Identitas filamen mengikuti data unit yang tersimpan. Estimasi biaya dihitung dari harga unit dan berat awal penerimaan.</p>
         </section>
 
+        <UsageCorrectionPanel session={session} onChanged={onChanged} />
         <section className="usage-history-notes" aria-labelledby="usage-history-notes-title"><h3 id="usage-history-notes-title">Catatan pekerjaan</h3><p>{session.notes || "Tidak ada catatan."}</p></section>
         <div className="dialog-actions"><button className="button secondary" type="button" onClick={downloadDetail}><Download size={17} /> Ekspor detail CSV</button><button className="button primary" type="button" onClick={onClose}>Tutup</button></div>
       </div>
