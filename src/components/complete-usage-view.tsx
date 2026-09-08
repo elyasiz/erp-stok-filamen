@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Camera, CheckCircle2, Circle, ClipboardCheck, LoaderCircle, ScanBarcode, ShieldCheck } from "lucide-react";
+import { AlertCircle, Camera, CheckCircle2, Circle, ClipboardCheck, LoaderCircle, Scale, ScanBarcode, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { CameraBarcodeScanner } from "./receipt-view";
 
@@ -24,6 +24,8 @@ type UsageItem = {
   startingGrams: number;
   usedGrams: number | null;
   returnedGrams: number | null;
+  measurementStatus: "MEASURED" | "PENDING";
+  provisionalUsedGrams: number | null;
 };
 type UsageDetail = UsageSummary & {
   status: "ACTIVE" | "COMPLETED" | "CANCELLED";
@@ -33,6 +35,7 @@ type UsageDetail = UsageSummary & {
   totalReturnedGrams: number;
   result: UsageResult | null;
   notes: string;
+  needsWeighing: boolean;
   items: UsageItem[];
 };
 
@@ -75,6 +78,7 @@ export default function CompleteUsageView({ initialSessionId, onOpenActive }: { 
   const [verifiedCodes, setVerifiedCodes] = useState<Record<string, string>>({});
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [result, setResult] = useState<UsageResult>("SUCCESS");
+  const [measurementMode, setMeasurementMode] = useState<"MEASURED" | "UNKNOWN">("MEASURED");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -95,6 +99,7 @@ export default function CompleteUsageView({ initialSessionId, onOpenActive }: { 
     setVerifiedCodes({});
     setAmounts({});
     setResult("SUCCESS");
+    setMeasurementMode("MEASURED");
     setNotes("");
     setCode("");
     setNotice("");
@@ -159,7 +164,7 @@ export default function CompleteUsageView({ initialSessionId, onOpenActive }: { 
       const response = await fetch(`/api/v1/usages/${encodeURIComponent(session.id)}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ result, notes, items: units.map((item) => ({
+        body: JSON.stringify({ result, measurementMode, notes, items: units.map((item) => ({
           inventoryItemId: item.inventoryItemId,
           barcode: verifiedCodes[item.inventoryItemId],
           usedGrams: Number(amounts[item.inventoryItemId]),
@@ -179,9 +184,9 @@ export default function CompleteUsageView({ initialSessionId, onOpenActive }: { 
     {error ? <div className="inventory-form-error completion-alert" role="alert"><AlertCircle size={18} /><span>{error}</span><button className="mini-button" disabled={saving || loading} onClick={() => session ? void selectSession(session.id) : void startAnother()}>Muat ulang</button></div> : null}
     {session?.status === "COMPLETED" ? <section className="form-panel completion-success">
       <CheckCircle2 size={36} /><h2>Sesi sudah selesai</h2><p>{session.number} · {session.userName} · {typeLabel(session)}</p>
-      <div className="info-strip">Data penyelesaian tersimpan. Sesi tidak lagi tampil di Penggunaan Aktif dan sisa stok sudah diperbarui.</div>
-      <dl className="cost-list"><div><dt>Hasil pekerjaan</dt><dd>{session.result ? resultLabels[session.result] : "—"}</dd></div><div><dt>Total digunakan</dt><dd>{grams(session.totalUsedGrams)} g</dd></div><div><dt>Total tersisa</dt><dd>{grams(session.totalReturnedGrams)} g</dd></div><div><dt>Waktu selesai</dt><dd>{session.completedAt ? new Date(session.completedAt).toLocaleString("id-ID") : "—"}</dd></div></dl>
-      <div className="completion-receipt">{units.map((item) => <article key={item.inventoryItemId}><div><strong>{item.product}</strong><small>{item.code}</small></div><span>Terpakai {grams(item.usedGrams ?? 0)} g</span><strong>Sisa {grams(item.returnedGrams ?? 0)} g</strong></article>)}</div>
+      <div className={`info-strip ${session.needsWeighing ? "warning-strip" : ""}`}>{session.needsWeighing ? "Gram aktual belum diketahui. Cadangan dari slicer sudah dikurangi sementara dan unit tidak dapat digunakan sampai ditimbang oleh Admin/Owner." : "Data penyelesaian tersimpan. Sesi tidak lagi tampil di Penggunaan Aktif dan sisa stok sudah diperbarui."}</div>
+      <dl className="cost-list"><div><dt>Hasil pekerjaan</dt><dd>{session.result ? resultLabels[session.result] : "—"}</dd></div><div><dt>{session.needsWeighing ? "Cadangan sementara" : "Total digunakan"}</dt><dd>{grams(session.totalUsedGrams)} g</dd></div><div><dt>{session.needsWeighing ? "Saldo sementara" : "Total tersisa"}</dt><dd>{grams(session.totalReturnedGrams)} g</dd></div><div><dt>Waktu selesai</dt><dd>{session.completedAt ? new Date(session.completedAt).toLocaleString("id-ID") : "—"}</dd></div></dl>
+      <div className="completion-receipt">{units.map((item) => <article key={item.inventoryItemId}><div><strong>{item.product}</strong><small>{item.code}</small></div><span>{item.measurementStatus === "PENDING" ? "Cadangan" : "Terpakai"} {grams(item.usedGrams ?? 0)} g</span><strong>{item.measurementStatus === "PENDING" ? "Saldo sementara" : "Sisa"} {grams(item.returnedGrams ?? 0)} g</strong></article>)}</div>
       {session.notes ? <p className="completion-notes">Catatan: {session.notes}</p> : null}
       <div className="dialog-actions"><button className="button secondary" onClick={onOpenActive}>Lihat Penggunaan Aktif</button><button className="button primary" onClick={() => void startAnother()}>Selesaikan sesi lain</button></div>
     </section> : <>
@@ -193,7 +198,7 @@ export default function CompleteUsageView({ initialSessionId, onOpenActive }: { 
       {loading ? <div className="inventory-empty"><LoaderCircle className="spin" size={28} /><strong>Memuat sesi penggunaan...</strong></div> : session ? <div className="complete-grid">
         <section className="form-panel">
           <div className="session-banner"><span><small>NOMOR SESI</small><strong>{session.number}</strong></span><span><small>PENGAMBIL</small><strong>{session.userName}</strong></span><span><small>JENIS</small><strong>{typeLabel(session)}</strong></span><span className="status success">Aktif</span></div>
-          <div className="section-title"><div><h2>Unit dari sesi penggunaan</h2><p>Scan setiap unit, lalu isi gram pemakaian. Isi 0 jika tidak terpakai.</p></div><span className="verified">{verifiedCount}/{units.length} terverifikasi</span></div>
+          <div className="section-title"><div><h2>Unit dari sesi penggunaan</h2><p>Scan setiap unit, lalu isi {measurementMode === "UNKNOWN" ? "estimasi maksimum dari slicer" : "gram yang benar-benar terpakai"}.</p></div><span className="verified">{verifiedCount}/{units.length} terverifikasi</span></div>
           {stockChanged ? <div className="inventory-form-error" role="alert"><AlertCircle size={16} /> Stok berubah sejak pengambilan. Periksa data stok sebelum finalisasi.</div> : null}
           <div className="return-list">{units.map((item) => {
             const verified = Boolean(verifiedCodes[item.inventoryItemId]);
@@ -203,18 +208,19 @@ export default function CompleteUsageView({ initialSessionId, onOpenActive }: { 
               {verified ? <CheckCircle2 className="check" size={20} aria-label="Barcode terverifikasi" /> : <Circle size={20} aria-label="Belum di-scan" />}
               <span><strong>{item.product}</strong><small>{item.code} · {item.color}</small><em>{verified ? "Barcode terverifikasi" : "Scan ulang barcode ini"}</em></span>
               <label><small>Saldo sebelum</small><strong>{grams(item.startingGrams)} g</strong></label>
-              <label><small>Gram digunakan *</small><input aria-label={`Gram digunakan ${item.code}`} required type="number" min="0" max={item.startingGrams} step="0.01" placeholder="Isi gram" value={value} disabled={saving} aria-invalid={value !== "" && !valid} onChange={(event) => setAmounts((current) => ({ ...current, [item.inventoryItemId]: event.target.value }))} />{value !== "" && !valid ? <small className="warning-copy">Isi 0–{grams(item.startingGrams)} g (maks. 2 desimal)</small> : null}</label>
-              <label><small>Sisa setelah</small><strong>{valid ? `${grams(item.startingGrams - Number(value))} g` : "—"}</strong></label>
+              <label><small>{measurementMode === "UNKNOWN" ? "Cadangan dari slicer *" : "Gram digunakan *"}</small><input aria-label={`${measurementMode === "UNKNOWN" ? "Cadangan gram" : "Gram digunakan"} ${item.code}`} required type="number" min="0" max={item.startingGrams} step="0.01" placeholder={measurementMode === "UNKNOWN" ? "Contoh: 20" : "Isi gram"} value={value} disabled={saving} aria-invalid={value !== "" && !valid} onChange={(event) => setAmounts((current) => ({ ...current, [item.inventoryItemId]: event.target.value }))} />{value !== "" && !valid ? <small className="warning-copy">Isi 0–{grams(item.startingGrams)} g (maks. 2 desimal)</small> : null}</label>
+              <label><small>{measurementMode === "UNKNOWN" ? "Saldo sementara" : "Sisa setelah"}</small><strong>{valid ? `${grams(item.startingGrams - Number(value))} g` : "—"}</strong></label>
             </div>;
           })}</div>
         </section>
         <aside className="summary-panel"><div className="section-title"><div><h2>Hasil pekerjaan</h2><p>Tersimpan bersama penutupan sesi.</p></div><ClipboardCheck size={20} /></div>
-          <label className="stack-field"><span>Hasil</span><select value={result} disabled={saving} onChange={(event) => setResult(event.target.value as UsageResult)}>{Object.entries(resultLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+          <label className="stack-field"><span>Hasil</span><select value={result} disabled={saving} onChange={(event) => { const next = event.target.value as UsageResult; setResult(next); if (next !== "FAILED") setMeasurementMode("MEASURED"); }}>{Object.entries(resultLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+          {result === "FAILED" ? <fieldset className="measurement-choice"><legend>Gram setelah gagal</legend><label><input type="radio" name="measurement-mode" checked={measurementMode === "MEASURED"} disabled={saving} onChange={() => setMeasurementMode("MEASURED")} /><span><strong>Sudah diketahui</strong><small>Masukkan gram yang benar-benar terpakai.</small></span></label><label><input type="radio" name="measurement-mode" checked={measurementMode === "UNKNOWN"} disabled={saving} onChange={() => setMeasurementMode("UNKNOWN")} /><span><strong>Belum diketahui</strong><small>Cadangkan estimasi slicer dan tandai unit perlu ditimbang.</small></span></label></fieldset> : null}
           <label className="stack-field"><span>Catatan (opsional)</span><textarea maxLength={1000} value={notes} disabled={saving} onChange={(event) => setNotes(event.target.value)} placeholder="Catatan hasil print..." /></label>
-          <dl className="cost-list"><div><dt>Unit pada sesi</dt><dd>{units.length} unit</dd></div><div><dt>Total digunakan</dt><dd>{grams(totalUsed)} g</dd></div><div><dt>Total tersisa</dt><dd>{allAmountsValid ? `${grams(units.reduce((sum, item) => sum + item.startingGrams, 0) - totalUsed)} g` : "Lengkapi input gram"}</dd></div></dl>
-          <div className="summary-note safe"><ShieldCheck size={18} /><span>Finalisasi menutup sesi dan memperbarui sisa stok. Barcode unit tetap sama; stok tidak dapat dikurangi dua kali untuk sesi yang sama.</span></div>
+          <dl className="cost-list"><div><dt>Unit pada sesi</dt><dd>{units.length} unit</dd></div><div><dt>{measurementMode === "UNKNOWN" ? "Cadangan sementara" : "Total digunakan"}</dt><dd>{grams(totalUsed)} g</dd></div><div><dt>{measurementMode === "UNKNOWN" ? "Saldo sementara" : "Total tersisa"}</dt><dd>{allAmountsValid ? `${grams(units.reduce((sum, item) => sum + item.startingGrams, 0) - totalUsed)} g` : "Lengkapi input gram"}</dd></div></dl>
+          <div className={`summary-note ${measurementMode === "UNKNOWN" ? "weighing" : "safe"}`}>{measurementMode === "UNKNOWN" ? <Scale size={18} /> : <ShieldCheck size={18} />}<span>{measurementMode === "UNKNOWN" ? "Nilai ini hanya cadangan. Unit akan berstatus Perlu ditimbang dan tidak dapat dipakai kembali sampai Admin/Owner memasukkan berat aktual." : "Finalisasi menutup sesi dan memperbarui sisa stok. Barcode unit tetap sama; stok tidak dapat dikurangi dua kali untuk sesi yang sama."}</span></div>
           {!allVerified || !allAmountsValid ? <p className="completion-hint">Scan seluruh unit dan lengkapi gram pemakaian untuk mengaktifkan tombol.</p> : null}
-          <button className="button primary full" disabled={!canFinalize} onClick={() => void finalize()}>{saving ? <><LoaderCircle className="spin" size={17} /> Menyimpan...</> : <><ClipboardCheck size={17} /> Finalisasi penggunaan</>}</button>
+          <button className="button primary full" disabled={!canFinalize} onClick={() => void finalize()}>{saving ? <><LoaderCircle className="spin" size={17} /> Menyimpan...</> : <><ClipboardCheck size={17} /> {measurementMode === "UNKNOWN" ? "Finalisasi & tandai perlu ditimbang" : "Finalisasi penggunaan"}</>}</button>
         </aside>
       </div> : <section className="form-panel inventory-empty"><span><ScanBarcode size={28} /></span><strong>{sessions.length ? "Pilih sesi yang akan diselesaikan" : "Belum ada penggunaan aktif"}</strong><p>{sessions.length ? "Pilih nama/nomor sesi di atas atau scan label unit. Data pengambilan akan ditampilkan otomatis." : "Selesaikan hanya dapat dilakukan untuk sesi yang sudah dikonfirmasi dari Mulai Penggunaan."}</p></section>}
     </>}

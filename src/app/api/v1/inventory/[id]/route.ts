@@ -35,7 +35,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/v1/inv
     if (reason.length < 3 || reason.length > 500) throw new AccessError(400, "Isi alasan perubahan, 3–500 karakter.");
     const input = parseInventoryInput(body);
     const item = await updateInventoryItem(id, input, actor, reason);
-    return item ? Response.json({ item }) : Response.json({ message: "Unit tidak ditemukan atau sedang digunakan. Selesaikan penggunaan sebelum mengubah stok." }, { status: 409 });
+    return item ? Response.json({ item }) : Response.json({ message: "Unit tidak ditemukan, sedang digunakan, atau perlu ditimbang. Selesaikan prosesnya sebelum mengubah stok." }, { status: 409 });
   } catch (error) {
     return errorResponse(error);
   }
@@ -50,7 +50,7 @@ export async function DELETE(request: Request, context: RouteContext<"/api/v1/in
     const { id } = await context.params;
     return (await deleteInventoryItem(id, actor, reason))
       ? Response.json({ success: true })
-      : Response.json({ message: "Data filamen tidak ditemukan." }, { status: 404 });
+      : Response.json({ message: "Unit tidak ditemukan, sedang digunakan, atau perlu ditimbang." }, { status: 409 });
   } catch (error) {
     return errorResponse(error);
   }

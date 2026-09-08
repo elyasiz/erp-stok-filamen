@@ -11,6 +11,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 
 export type UsageCompletionInput = {
   result: (typeof completionResults)[number];
+  measurementMode: "MEASURED" | "UNKNOWN";
   notes: string;
   items: Array<{ inventoryItemId: string; barcode: string; usedGrams: number }>;
 };
@@ -23,6 +24,11 @@ export type UsageCorrectionInput = {
 export type UsageCorrectionReviewInput = {
   decision: "APPROVE" | "REJECT";
   note: string;
+};
+
+export type UsageWeighingInput = {
+  note: string;
+  items: Array<{ inventoryItemId: string; remainingGrams: number }>;
 };
 
 type UsageType = (typeof usageTypes)[number];
@@ -55,6 +61,7 @@ type UsageRow = {
   total_starting_grams: string | number;
   total_used_grams: string | number;
   total_returned_grams: string | number;
+  pending_measurement_count: string | number;
   colors: string[];
   result: UsageCompletionInput["result"] | null;
   notes: string;
@@ -71,6 +78,29 @@ type UsageItemRow = {
   starting_grams: string | number;
   used_grams: string | number | null;
   returned_grams: string | number | null;
+  measurement_status: "MEASURED" | "PENDING";
+  provisional_used_grams: string | number | null;
+  weighed_by_name: string | null;
+  weighed_at: string | Date | null;
+  weighing_note: string;
+};
+
+type UsageWeighingRow = {
+  id: string;
+  usage_number: string;
+  user_name: string;
+  activity_name: string;
+  completed_at: string | Date;
+  completed_by_name: string | null;
+  items: Array<{
+    inventoryItemId: string;
+    code: string;
+    product: string;
+    color: string;
+    startingGrams: string | number;
+    provisionalUsedGrams: string | number;
+    reservedRemainingGrams: string | number;
+  }>;
 };
 
 type UsageCorrectionRow = {
@@ -119,7 +149,7 @@ export async function ensureUsageSchema() {
           color text not null,
           packaging_type text not null check (packaging_type in ('WITH_SPOOL', 'REFILL')),
           remaining_grams numeric(12,2) not null check (remaining_grams >= 0),
-          status text not null check (status in ('AVAILABLE', 'IN_USE', 'LOW_STOCK', 'EMPTY', 'DAMAGED', 'INACTIVE')),
+          status text not null check (status in ('AVAILABLE', 'IN_USE', 'NEEDS_WEIGHING', 'LOW_STOCK', 'EMPTY', 'DAMAGED', 'INACTIVE')),
           unit_cost numeric(16,2) not null check (unit_cost >= 0),
           supplier text not null,
           created_at timestamptz not null default now(),
@@ -148,8 +178,32 @@ export async function ensureUsageSchema() {
           starting_grams numeric(12,2) not null check (starting_grams >= 0),
           returned_grams numeric(12,2),
           used_grams numeric(12,2),
+          measurement_status text not null default 'MEASURED' check (measurement_status in ('MEASURED', 'PENDING')),
+          provisional_used_grams numeric(12,2),
+          weighed_by_user_id uuid,
+          weighed_by_name text,
+          weighed_at timestamptz,
+          weighing_note text not null default '',
           primary key (session_id, inventory_item_id)
         )
+      `;
+      await sql`
+        do $$ begin
+          if exists (
+            select 1 from pg_constraint
+            where conrelid = 'inventory_items'::regclass and conname = 'inventory_items_status_check'
+              and pg_get_constraintdef(oid) not like '%NEEDS_WEIGHING%'
+          ) then
+            alter table inventory_items drop constraint inventory_items_status_check;
+          end if;
+          if not exists (
+            select 1 from pg_constraint
+            where conrelid = 'inventory_items'::regclass and conname = 'inventory_items_status_check'
+          ) then
+            alter table inventory_items add constraint inventory_items_status_check
+              check (status in ('AVAILABLE', 'IN_USE', 'NEEDS_WEIGHING', 'LOW_STOCK', 'EMPTY', 'DAMAGED', 'INACTIVE'));
+          end if;
+        end $$
       `;
       await sql`create index if not exists usage_sessions_status_started_idx on usage_sessions (status, started_at desc)`;
       await sql`create index if not exists usage_session_items_inventory_idx on usage_session_items (inventory_item_id)`;
@@ -161,7 +215,14 @@ export async function ensureUsageSchema() {
       await sql`alter table usage_sessions add column if not exists completed_by_user_id uuid`;
       await sql`alter table usage_sessions add column if not exists completed_by_name text`;
       await sql`alter table usage_sessions add column if not exists activity_name text not null default ''`;
+      await sql`alter table usage_session_items add column if not exists measurement_status text not null default 'MEASURED' check (measurement_status in ('MEASURED', 'PENDING'))`;
+      await sql`alter table usage_session_items add column if not exists provisional_used_grams numeric(12,2)`;
+      await sql`alter table usage_session_items add column if not exists weighed_by_user_id uuid`;
+      await sql`alter table usage_session_items add column if not exists weighed_by_name text`;
+      await sql`alter table usage_session_items add column if not exists weighed_at timestamptz`;
+      await sql`alter table usage_session_items add column if not exists weighing_note text not null default ''`;
       await sql`create index if not exists usage_sessions_borrower_idx on usage_sessions(borrower_user_id, started_at desc)`;
+      await sql`create index if not exists usage_session_items_measurement_idx on usage_session_items(measurement_status, session_id)`;
       await sql`
         create table if not exists usage_corrections (
           id uuid primary key,
@@ -214,6 +275,7 @@ function mapUsage(row: UsageRow) {
     totalStartingGrams: Number(row.total_starting_grams),
     totalUsedGrams: Number(row.total_used_grams),
     totalReturnedGrams: Number(row.total_returned_grams),
+    needsWeighing: Number(row.pending_measurement_count) > 0,
     colors: Array.isArray(row.colors) ? row.colors.map(String) : [],
     result: row.result,
     notes: row.notes,
@@ -275,8 +337,11 @@ export function parseUsageCompletionInput(value: unknown): UsageCompletionInput 
   if (!value || typeof value !== "object") throw new Error("Data penyelesaian tidak valid.");
   const input = value as Record<string, unknown>;
   const result = String(input.result ?? "") as UsageCompletionInput["result"];
+  const measurementMode = String(input.measurementMode ?? "MEASURED") as UsageCompletionInput["measurementMode"];
   const notes = String(input.notes ?? "").trim();
   if (!completionResults.includes(result)) throw new Error("Pilih hasil pekerjaan yang valid.");
+  if (!(measurementMode === "MEASURED" || measurementMode === "UNKNOWN")) throw new Error("Status penimbangan tidak valid.");
+  if (measurementMode === "UNKNOWN" && result !== "FAILED") throw new Error("Gram belum diketahui hanya dapat dipilih untuk hasil gagal.");
   if (notes.length > 1000) throw new Error("Catatan maksimal 1.000 karakter.");
   if (!Array.isArray(input.items) || !input.items.length || input.items.length > 20) throw new Error("Seluruh unit pada sesi harus diisi dan di-scan ulang.");
   const items = input.items.map((raw) => {
@@ -293,7 +358,28 @@ export function parseUsageCompletionInput(value: unknown): UsageCompletionInput 
     return { inventoryItemId, barcode, usedGrams };
   });
   if (new Set(items.map((item) => item.inventoryItemId)).size !== items.length) throw new Error("Unit tidak boleh dikirim dua kali.");
-  return { result, notes, items };
+  return { result, measurementMode, notes, items };
+}
+
+export function parseUsageWeighingInput(value: unknown): UsageWeighingInput {
+  if (!value || typeof value !== "object") throw new Error("Data penimbangan tidak valid.");
+  const input = value as Record<string, unknown>;
+  const note = String(input.note ?? "").trim();
+  if (note.length < 3 || note.length > 500) throw new Error("Isi catatan penimbangan, 3–500 karakter.");
+  if (!Array.isArray(input.items) || !input.items.length || input.items.length > 20) throw new Error("Lengkapi hasil timbang seluruh unit.");
+  const items = input.items.map((raw) => {
+    if (!raw || typeof raw !== "object") throw new Error("Data unit penimbangan tidak valid.");
+    const item = raw as Record<string, unknown>;
+    const inventoryItemId = String(item.inventoryItemId ?? "").trim().toLowerCase();
+    const remainingGrams = item.remainingGrams;
+    if (!uuidPattern.test(inventoryItemId)) throw new Error("Identitas unit penimbangan tidak valid.");
+    if (typeof remainingGrams !== "number" || !Number.isFinite(remainingGrams) || remainingGrams < 0 || remainingGrams > 100000 || Math.abs(remainingGrams * 100 - Math.round(remainingGrams * 100)) > 0.000001) {
+      throw new Error("Sisa gram hasil timbang wajib berupa angka 0–100.000, maksimal 2 angka desimal.");
+    }
+    return { inventoryItemId, remainingGrams };
+  });
+  if (new Set(items.map((item) => item.inventoryItemId)).size !== items.length) throw new Error("Unit penimbangan tidak boleh dikirim dua kali.");
+  return { note, items };
 }
 
 export function parseUsageCorrectionInput(value: unknown): UsageCorrectionInput {
@@ -346,6 +432,7 @@ function usageQuery(id?: string, actor?: Actor, history = false) {
           coalesce(sum(i.starting_grams), 0) as total_starting_grams,
           coalesce(sum(i.used_grams), 0) as total_used_grams,
           coalesce(sum(i.returned_grams), 0) as total_returned_grams,
+          count(*) filter (where i.measurement_status = 'PENDING')::int as pending_measurement_count,
           coalesce(
             array_agg(distinct inv.color order by inv.color)
               filter (where inv.color is not null and btrim(inv.color) <> ''),
@@ -363,6 +450,7 @@ function usageQuery(id?: string, actor?: Actor, history = false) {
           coalesce(sum(i.starting_grams), 0) as total_starting_grams,
           coalesce(sum(i.used_grams), 0) as total_used_grams,
           coalesce(sum(i.returned_grams), 0) as total_returned_grams,
+          count(*) filter (where i.measurement_status = 'PENDING')::int as pending_measurement_count,
           coalesce(
             array_agg(distinct inv.color order by inv.color)
               filter (where inv.color is not null and btrim(inv.color) <> ''),
@@ -408,6 +496,11 @@ export async function getUsageSession(id: string, actor?: Actor) {
       startingGrams: Number(item.starting_grams),
       usedGrams: item.used_grams === null ? null : Number(item.used_grams),
       returnedGrams: item.returned_grams === null ? null : Number(item.returned_grams),
+      measurementStatus: item.measurement_status,
+      provisionalUsedGrams: item.provisional_used_grams === null ? null : Number(item.provisional_used_grams),
+      weighedByName: item.weighed_by_name,
+      weighedAt: item.weighed_at ? new Date(item.weighed_at).toISOString() : null,
+      weighingNote: item.weighing_note,
     })),
   };
 }
@@ -470,6 +563,7 @@ export async function createUsageCorrection(sessionId: string, input: UsageCorre
   const session = await getUsageSession(sessionId, actor);
   if (!session) throw new Error("USAGE_NOT_FOUND");
   if (session.status !== "COMPLETED") throw new Error("CORRECTION_SESSION_NOT_COMPLETED");
+  if (session.needsWeighing) throw new Error("CORRECTION_MEASUREMENT_PENDING");
   if (input.items.length !== session.items.length) throw new Error("CORRECTION_ITEMS_MISMATCH");
   const currentById = new Map(session.items.map((item) => [item.inventoryItemId, item]));
   const changes = input.items.map((item) => {
@@ -491,7 +585,7 @@ export async function createUsageCorrection(sessionId: string, input: UsageCorre
       select item.*, usage_item.starting_grams
       from requested item
       join usage_session_items usage_item on usage_item.session_id = ${sessionId} and usage_item.inventory_item_id = item."inventoryItemId"
-      where usage_item.used_grams = item."beforeUsedGrams"
+      where usage_item.used_grams = item."beforeUsedGrams" and usage_item.measurement_status = 'MEASURED'
         and item."afterUsedGrams" between 0 and usage_item.starting_grams
     ), created as (
       insert into usage_corrections(id, session_id, reason, requested_by_user_id, requested_by_name)
@@ -556,7 +650,8 @@ export async function reviewUsageCorrection(id: string, input: UsageCorrectionRe
       where correction.id = ${id} and correction.status = 'PENDING'
       for update
     ), correction_items as (
-      select item.*, usage_item.starting_grams, usage_item.used_grams, inventory.remaining_grams, inventory.status as inventory_status
+      select item.*, usage_item.starting_grams, usage_item.used_grams, usage_item.measurement_status,
+        inventory.remaining_grams, inventory.status as inventory_status
       from usage_correction_items item
       join target on target.id = item.correction_id
       join usage_session_items usage_item on usage_item.session_id = target.session_id and usage_item.inventory_item_id = item.inventory_item_id
@@ -573,7 +668,8 @@ export async function reviewUsageCorrection(id: string, input: UsageCorrectionRe
           select 1 from correction_items item
           where item.used_grams is distinct from item.before_used_grams
             or item.after_used_grams > item.starting_grams
-            or item.inventory_status = 'IN_USE'
+            or item.measurement_status <> 'MEASURED'
+            or item.inventory_status in ('IN_USE', 'NEEDS_WEIGHING')
             or item.remaining_grams + item.before_used_grams - item.after_used_grams < 0
         )
     ), updated_inventory as (
@@ -614,6 +710,134 @@ export async function reviewUsageCorrection(id: string, input: UsageCorrectionRe
   `;
   if (!rows[0]) throw new Error("CORRECTION_APPLY_CONFLICT");
   return (await listUsageCorrections(actor)).find((item) => item.id === id)!;
+}
+
+export async function listUsageWeighings(actor: Actor) {
+  if (!isStaff(actor)) throw new Error("FORBIDDEN");
+  await ensureUsageSchema();
+  const sql = getSql();
+  const rows = await sql`
+    select session.id, session.usage_number, session.user_name, session.activity_name,
+      session.completed_at, session.completed_by_name,
+      json_agg(json_build_object(
+        'inventoryItemId', item.inventory_item_id,
+        'code', inventory.code,
+        'product', inventory.product,
+        'color', inventory.color,
+        'startingGrams', item.starting_grams,
+        'provisionalUsedGrams', item.provisional_used_grams,
+        'reservedRemainingGrams', item.returned_grams
+      ) order by inventory.code) as items
+    from usage_sessions session
+    join usage_session_items item on item.session_id = session.id and item.measurement_status = 'PENDING'
+    join inventory_items inventory on inventory.id = item.inventory_item_id
+    where session.status = 'COMPLETED'
+    group by session.id
+    order by session.completed_at asc
+    limit 200
+  `;
+  return (rows as UsageWeighingRow[]).map((row) => ({
+    id: row.id,
+    number: row.usage_number,
+    userName: row.user_name,
+    activityName: row.activity_name,
+    completedAt: new Date(row.completed_at).toISOString(),
+    completedByName: row.completed_by_name,
+    items: row.items.map((item) => ({
+      inventoryItemId: item.inventoryItemId,
+      code: item.code,
+      product: item.product,
+      color: item.color,
+      startingGrams: Number(item.startingGrams),
+      provisionalUsedGrams: Number(item.provisionalUsedGrams),
+      reservedRemainingGrams: Number(item.reservedRemainingGrams),
+    })),
+  }));
+}
+
+export async function verifyUsageWeighing(sessionId: string, input: UsageWeighingInput, actor: Actor) {
+  if (!uuidPattern.test(sessionId)) throw new Error("Penimbangan tidak valid.");
+  if (!isStaff(actor)) throw new Error("FORBIDDEN");
+  const existing = (await listUsageWeighings(actor)).find((item) => item.id === sessionId);
+  if (!existing) throw new Error("WEIGHING_NOT_FOUND");
+  if (input.items.length !== existing.items.length) throw new Error("WEIGHING_ITEMS_MISMATCH");
+  const existingById = new Map(existing.items.map((item) => [item.inventoryItemId, item]));
+  for (const item of input.items) {
+    const current = existingById.get(item.inventoryItemId);
+    if (!current || item.remainingGrams > current.startingGrams) throw new Error("WEIGHING_ITEMS_MISMATCH");
+  }
+
+  const sql = getSql();
+  const requestedItems = JSON.stringify(input.items.map((item) => ({
+    inventory_item_id: item.inventoryItemId,
+    remaining_grams: item.remainingGrams,
+  })));
+  const rows = await sql`
+    with requested as (
+      select * from jsonb_to_recordset(${requestedItems}::jsonb)
+      as req(inventory_item_id uuid, remaining_grams numeric)
+    ), target as (
+      select id from usage_sessions where id = ${sessionId} and status = 'COMPLETED' for update
+    ), pending_items as (
+      select item.inventory_item_id, item.starting_grams, item.used_grams, item.returned_grams,
+        item.provisional_used_grams, inventory.remaining_grams as inventory_grams, inventory.status as inventory_status
+      from usage_session_items item
+      join target on target.id = item.session_id
+      join inventory_items inventory on inventory.id = item.inventory_item_id
+      where item.measurement_status = 'PENDING'
+    ), locked_inventory as (
+      select inventory.id
+      from inventory_items inventory join pending_items item on item.inventory_item_id = inventory.id
+      order by inventory.id for update
+    ), valid_items as (
+      select item.*, req.remaining_grams as measured_remaining_grams
+      from pending_items item join requested req on req.inventory_item_id = item.inventory_item_id
+      where item.inventory_status = 'NEEDS_WEIGHING'
+        and item.provisional_used_grams is not null
+        and item.inventory_grams = item.starting_grams - item.provisional_used_grams
+        and req.remaining_grams between 0 and item.starting_grams
+    ), ready as (
+      select id from target
+      where (select count(*) from pending_items) = ${input.items.length}
+        and (select count(*) from locked_inventory) = ${input.items.length}
+        and (select count(*) from valid_items) = ${input.items.length}
+    ), updated_inventory as (
+      update inventory_items inventory
+      set remaining_grams = item.measured_remaining_grams,
+        status = case
+          when item.measured_remaining_grams = 0 then 'EMPTY'
+          when item.measured_remaining_grams < 500 then 'LOW_STOCK'
+          else 'AVAILABLE'
+        end,
+        updated_at = now()
+      from valid_items item, ready
+      where inventory.id = item.inventory_item_id
+      returning inventory.id
+    ), updated_items as (
+      update usage_session_items usage_item
+      set used_grams = usage_item.starting_grams - item.measured_remaining_grams,
+        returned_grams = item.measured_remaining_grams,
+        measurement_status = 'MEASURED', weighed_by_user_id = ${actor.id}, weighed_by_name = ${actor.name},
+        weighed_at = now(), weighing_note = ${input.note}
+      from valid_items item, ready
+      where usage_item.session_id = ready.id and usage_item.inventory_item_id = item.inventory_item_id
+      returning usage_item.inventory_item_id
+    ), logged as (
+      insert into audit_events(id, actor_user_id, actor_name, action, entity_type, entity_id, reason, before_data, after_data)
+      select ${crypto.randomUUID()}, ${actor.id}, ${actor.name}, 'USAGE_WEIGHING_VERIFIED', 'usage', id::text, ${input.note},
+        ${JSON.stringify(existing.items.map((item) => ({ code: item.code, provisionalUsedGrams: item.provisionalUsedGrams, reservedRemainingGrams: item.reservedRemainingGrams })))}::jsonb,
+        ${JSON.stringify(existing.items.map((item) => {
+          const measured = input.items.find((candidate) => candidate.inventoryItemId === item.inventoryItemId)!;
+          return { code: item.code, usedGrams: item.startingGrams - measured.remainingGrams, remainingGrams: measured.remainingGrams };
+        }))}::jsonb
+      from ready
+      where (select count(*) from updated_inventory) = ${input.items.length}
+        and (select count(*) from updated_items) = ${input.items.length}
+      returning id
+    ) select id from ready where (select count(*) from logged) = 1
+  `;
+  if (!rows[0]) throw new Error("WEIGHING_APPLY_CONFLICT");
+  return getUsageSession(sessionId, actor);
 }
 
 export async function createUsageSession(input: UsageInput, actor?: Actor) {
@@ -674,6 +898,8 @@ export async function completeUsageSession(id: string, input: UsageCompletionInp
     barcode: item.barcode,
     used_grams: item.usedGrams,
   })));
+  const measurementPending = input.measurementMode === "UNKNOWN";
+  const completionAction = measurementPending ? "USAGE_COMPLETED_UNWEIGHED" : "USAGE_COMPLETED";
 
   // Lock the session and inventory, validate the complete set, then write all changes in one statement.
   const rows = await sql`
@@ -708,6 +934,7 @@ export async function completeUsageSession(id: string, input: UsageCompletionInp
       update inventory_items inv
       set remaining_grams = eligible.remaining_grams - eligible.used_grams,
         status = case
+          when ${measurementPending} then 'NEEDS_WEIGHING'
           when eligible.remaining_grams - eligible.used_grams = 0 then 'EMPTY'
           when eligible.remaining_grams - eligible.used_grams < 500 then 'LOW_STOCK'
           else 'AVAILABLE'
@@ -717,7 +944,10 @@ export async function completeUsageSession(id: string, input: UsageCompletionInp
       returning inv.id, inv.remaining_grams
     ), updated_items as (
       update usage_session_items item
-      set used_grams = req.used_grams, returned_grams = inv.remaining_grams
+      set used_grams = req.used_grams, returned_grams = inv.remaining_grams,
+        measurement_status = case when ${measurementPending} then 'PENDING' else 'MEASURED' end,
+        provisional_used_grams = case when ${measurementPending} then req.used_grams else null end,
+        weighed_by_user_id = null, weighed_by_name = null, weighed_at = null, weighing_note = ''
       from requested req, updated_inventory inv, ready
       where item.session_id = ready.id and item.inventory_item_id = inv.id and req.inventory_item_id = inv.id
       returning item.inventory_item_id
@@ -730,9 +960,9 @@ export async function completeUsageSession(id: string, input: UsageCompletionInp
     )
     , logged as (
       insert into audit_events(id,actor_user_id,actor_name,action,entity_type,entity_id,before_data,after_data)
-      select ${crypto.randomUUID()},${actor?.id ?? null},${actor?.name ?? existing.userName},'USAGE_COMPLETED','usage',id::text,
+      select ${crypto.randomUUID()},${actor?.id ?? null},${actor?.name ?? existing.userName},${completionAction},'usage',id::text,
         ${JSON.stringify({ number: existing.number, items: existing.items.map(item => ({ code: item.code, grams: item.startingGrams })) })}::jsonb,
-        ${JSON.stringify({ number: existing.number, result: input.result, items: input.items })}::jsonb from completed returning id
+        ${JSON.stringify({ number: existing.number, result: input.result, measurementMode: input.measurementMode, items: input.items })}::jsonb from completed returning id
     ) select id from completed
   `;
   if (!rows[0]) throw new Error("USAGE_COMPLETION_CONFLICT");

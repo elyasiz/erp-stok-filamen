@@ -4,7 +4,7 @@ import { neon } from "@neondatabase/serverless";
 import { ensureAuditSchema } from "./audit-db";
 import type { Actor } from "./account-types";
 
-export const inventoryStatuses = ["AVAILABLE", "IN_USE", "LOW_STOCK", "EMPTY", "DAMAGED", "INACTIVE"] as const;
+export const inventoryStatuses = ["AVAILABLE", "IN_USE", "NEEDS_WEIGHING", "LOW_STOCK", "EMPTY", "DAMAGED", "INACTIVE"] as const;
 export const packagingTypes = ["WITH_SPOOL", "REFILL"] as const;
 
 export type InventoryStatus = (typeof inventoryStatuses)[number];
@@ -58,7 +58,7 @@ async function ensureSchema() {
           color text not null,
           packaging_type text not null check (packaging_type in ('WITH_SPOOL', 'REFILL')),
           remaining_grams numeric(12,2) not null check (remaining_grams >= 0),
-          status text not null check (status in ('AVAILABLE', 'IN_USE', 'LOW_STOCK', 'EMPTY', 'DAMAGED', 'INACTIVE')),
+          status text not null check (status in ('AVAILABLE', 'IN_USE', 'NEEDS_WEIGHING', 'LOW_STOCK', 'EMPTY', 'DAMAGED', 'INACTIVE')),
           unit_cost numeric(16,2) not null check (unit_cost >= 0),
           supplier text not null,
           created_at timestamptz not null default now(),
@@ -158,7 +158,7 @@ export async function updateInventoryItem(id: string, input: InventoryInput, act
     set code = ${input.code}, product = ${input.product}, material = ${input.material}, color = ${input.color},
         packaging_type = ${input.packagingType}, remaining_grams = ${input.remainingGrams}, status = ${input.status},
         unit_cost = ${input.unitCost}, supplier = ${input.supplier}, updated_at = now()
-    from previous p where inv.id = p.id and p.status <> 'IN_USE'
+    from previous p where inv.id = p.id and p.status not in ('IN_USE', 'NEEDS_WEIGHING')
     returning inv.*), logged as (
       insert into audit_events(id,actor_user_id,actor_name,action,entity_type,entity_id,reason,before_data,after_data)
       select ${crypto.randomUUID()},${actor.id},${actor.name},'STOCK_UPDATED','inventory',c.id::text,${reason},to_jsonb(p),to_jsonb(c) from changed c, previous p returning id
@@ -171,7 +171,7 @@ export async function deleteInventoryItem(id: string, actor: Actor, reason: stri
   await ensureAuditSchema();
   await ensureSchema();
   const sql = getSql();
-  const rows = await sql`with deleted as (delete from inventory_items where id = ${id} and status <> 'IN_USE' returning *), logged as (
+  const rows = await sql`with deleted as (delete from inventory_items where id = ${id} and status not in ('IN_USE', 'NEEDS_WEIGHING') returning *), logged as (
     insert into audit_events(id,actor_user_id,actor_name,action,entity_type,entity_id,reason,before_data)
     select ${crypto.randomUUID()},${actor.id},${actor.name},'STOCK_DELETED','inventory',id::text,${reason},to_jsonb(deleted) from deleted returning id
   ) select deleted.id from deleted, logged`;

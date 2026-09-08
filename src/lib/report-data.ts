@@ -6,10 +6,10 @@ export type ReportSnapshot = {
   receipts: Array<{ id: string; receipt_number: string; supplier: string; invoice_number: string; purchase_date: Timestamp; received_date: Timestamp; status: string; discount: Amount; tax: Amount; shipping: Amount; notes: string; created_at: Timestamp; updated_at: Timestamp }>;
   receiptItems: Array<{ id: string; receipt_id: string; quantity: number; unit_weight_grams: Amount; unit_cost: Amount }>;
   sessions: Array<{ id: string; usage_number: string; user_name: string; usage_type: string; non_class_type: string | null; status: string; started_at: Timestamp; completed_at: Timestamp | null; result: string | null; notes: string; activity_name?: string; created_by_name?: string | null; completed_by_name?: string | null }>;
-  sessionItems: Array<{ session_id: string; inventory_item_id: string; starting_grams: Amount; used_grams: Amount | null; returned_grams: Amount | null }>;
+  sessionItems: Array<{ session_id: string; inventory_item_id: string; starting_grams: Amount; used_grams: Amount | null; returned_grams: Amount | null; measurement_status?: "MEASURED" | "PENDING"; provisional_used_grams?: Amount | null; weighed_by_name?: string | null; weighed_at?: Timestamp | null; weighing_note?: string }>;
 };
 
-export const stockStatusLabels: Record<string, string> = { AVAILABLE: "Tersedia", IN_USE: "Digunakan", LOW_STOCK: "Hampir habis", EMPTY: "Habis", DAMAGED: "Rusak", INACTIVE: "Nonaktif" };
+export const stockStatusLabels: Record<string, string> = { AVAILABLE: "Tersedia", IN_USE: "Digunakan", NEEDS_WEIGHING: "Perlu ditimbang", LOW_STOCK: "Hampir habis", EMPTY: "Habis", DAMAGED: "Rusak", INACTIVE: "Nonaktif" };
 export const resultLabels: Record<string, string> = { SUCCESS: "Berhasil", PARTIAL: "Sebagian berhasil", FAILED: "Gagal", CANCELLED: "Dibatalkan" };
 export const sessionStatusLabels: Record<string, string> = { ACTIVE: "Aktif", COMPLETED: "Selesai", CANCELLED: "Dibatalkan" };
 const iso = (value: Timestamp) => new Date(value).toISOString();
@@ -23,7 +23,7 @@ export function jakartaDate(value: Timestamp) {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-export type StockMovement = { id: string; time: string; code: string; type: "Barang masuk" | "Penggunaan"; reference: string; change: number; before: number; after: number; user: string | null };
+export type StockMovement = { id: string; time: string; code: string; type: "Barang masuk" | "Penggunaan" | "Cadangan penggunaan"; reference: string; change: number; before: number; after: number; user: string | null };
 export type ReportActivity = { id: string; time: string; kind: "receipt" | "start" | "complete"; title: string; detail: string; person: string };
 
 // Reports are derived from one database snapshot. Never invent movements for manual stock edits.
@@ -42,8 +42,9 @@ export function buildReports(snapshot: ReportSnapshot, now = new Date()) {
       const stock = stockById.get(item.inventory_item_id);
       const line = stock?.source_receipt_item_id ? lineById.get(stock.source_receipt_item_id) : undefined;
       const usedGrams = item.used_grams === null ? null : Number(item.used_grams);
+      const measurementStatus = item.measurement_status ?? "MEASURED";
       // Manual units have no recorded original weight; their cost cannot be inferred from remaining grams.
-      const estimatedCost = usedGrams === 0 ? 0 : usedGrams !== null && stock && line && Number(line.unit_weight_grams) > 0
+      const estimatedCost = measurementStatus === "PENDING" ? null : usedGrams === 0 ? 0 : usedGrams !== null && stock && line && Number(line.unit_weight_grams) > 0
         ? round(usedGrams * Number(stock.unit_cost) / Number(line.unit_weight_grams)) : null;
       return {
         inventoryItemId: item.inventory_item_id, code: stock?.code ?? "Unit tidak tersedia",
@@ -51,6 +52,11 @@ export function buildReports(snapshot: ReportSnapshot, now = new Date()) {
         packagingType: stock?.packaging_type ?? null, supplier: stock?.supplier ?? null,
         startingGrams: Number(item.starting_grams), usedGrams,
         returnedGrams: item.returned_grams === null ? null : Number(item.returned_grams), estimatedCost,
+        measurementStatus,
+        provisionalUsedGrams: item.provisional_used_grams === null || item.provisional_used_grams === undefined ? null : Number(item.provisional_used_grams),
+        weighedByName: item.weighed_by_name ?? null,
+        weighedAt: item.weighed_at ? iso(item.weighed_at) : null,
+        weighingNote: item.weighing_note ?? "",
       };
     }).sort((a, b) => a.code.localeCompare(b.code));
     const completed = session.status === "COMPLETED";
@@ -64,6 +70,7 @@ export function buildReports(snapshot: ReportSnapshot, now = new Date()) {
       totalUsedGrams: completed ? sum(items, (item) => item.usedGrams ?? 0) : null,
       totalReturnedGrams: completed ? sum(items, (item) => item.returnedGrams ?? 0) : null,
       estimatedCost: completed && items.every((item) => item.estimatedCost !== null) ? sum(items, (item) => item.estimatedCost!) : null,
+      needsWeighing: items.some((item) => item.measurementStatus === "PENDING"),
     };
   }).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 
@@ -94,7 +101,7 @@ export function buildReports(snapshot: ReportSnapshot, now = new Date()) {
     if (session.status !== "COMPLETED" || !session.completedAt) continue;
     for (const item of session.items) {
       if (item.usedGrams === null || item.returnedGrams === null) continue;
-      movements.push({ id: `usage-${session.id}-${item.inventoryItemId}`, time: session.completedAt, code: item.code, type: "Penggunaan", reference: session.number, change: -item.usedGrams, before: item.startingGrams, after: item.returnedGrams, user: session.userName });
+      movements.push({ id: `usage-${session.id}-${item.inventoryItemId}`, time: session.completedAt, code: item.code, type: item.measurementStatus === "PENDING" ? "Cadangan penggunaan" : "Penggunaan", reference: session.number, change: -item.usedGrams, before: item.startingGrams, after: item.returnedGrams, user: session.userName });
     }
   }
   movements.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime() || a.id.localeCompare(b.id));
@@ -102,7 +109,7 @@ export function buildReports(snapshot: ReportSnapshot, now = new Date()) {
   const activities: ReportActivity[] = receipts.filter((item) => item.status === "FINALIZED").map((item) => ({ id: `receipt-${item.id}`, time: item.updatedAt, kind: "receipt", title: "Penerimaan final", detail: `${item.number} · ${item.unitCount} unit`, person: item.supplier }));
   for (const session of usages) {
     activities.push({ id: `start-${session.id}`, time: session.startedAt, kind: "start", title: "Penggunaan dimulai", detail: `${session.number} · ${session.unitCount} unit`, person: session.userName });
-    if (session.status === "COMPLETED" && session.completedAt) activities.push({ id: `complete-${session.id}`, time: session.completedAt, kind: "complete", title: "Penggunaan selesai", detail: `${session.number} · ${session.totalUsedGrams?.toLocaleString("id-ID")} g`, person: session.userName });
+    if (session.status === "COMPLETED" && session.completedAt) activities.push({ id: `complete-${session.id}`, time: session.completedAt, kind: "complete", title: session.needsWeighing ? "Penggunaan menunggu timbang" : "Penggunaan selesai", detail: `${session.number} · ${session.totalUsedGrams?.toLocaleString("id-ID")} g${session.needsWeighing ? " sementara" : ""}`, person: session.userName });
   }
   activities.sort((a, b) => b.time.localeCompare(a.time));
   const lowStock = inventory.filter((item) => item.remainingGrams > 0 && item.remainingGrams < 500).sort((a, b) => a.remainingGrams - b.remainingGrams);
@@ -114,7 +121,7 @@ export function buildReports(snapshot: ReportSnapshot, now = new Date()) {
   return {
     generatedAt: now.toISOString(), today: jakartaDate(now), currentMonth: jakartaDate(now).slice(0, 7),
     inventory, usages, receipts, movements, activities, activeSessions, lowStock,
-    summary: { totalUnits: inventory.length, totalGrams: sum(inventory, (item) => item.remainingGrams), available, inUse, lowStock: lowStock.length, healthyPercent: inventory.length ? Math.round(healthyUnits / inventory.length * 100) : 0, attentionUnits: inventory.length - healthyUnits },
+    summary: { totalUnits: inventory.length, totalGrams: sum(inventory, (item) => item.remainingGrams), available, inUse, needsWeighing: inventory.filter((item) => item.status === "NEEDS_WEIGHING").length, lowStock: lowStock.length, healthyPercent: inventory.length ? Math.round(healthyUnits / inventory.length * 100) : 0, attentionUnits: inventory.length - healthyUnits },
   };
 }
 
@@ -144,7 +151,8 @@ export function filterUsageHistory(usages: ReportsData["usages"], filters: Usage
 export function usageTotals(usages: ReportsData["usages"]) {
   const completed = usages.filter((item) => item.status === "COMPLETED");
   const incompleteCostCount = completed.filter((item) => item.estimatedCost === null).length;
-  return { count: completed.length, grams: sum(completed, (item) => item.totalUsedGrams ?? 0), estimatedCost: incompleteCostCount ? null : sum(completed, (item) => item.estimatedCost ?? 0), incompleteCostCount };
+  const pendingMeasurementCount = completed.filter((item) => item.needsWeighing).length;
+  return { count: completed.length, grams: sum(completed, (item) => item.totalUsedGrams ?? 0), estimatedCost: incompleteCostCount ? null : sum(completed, (item) => item.estimatedCost ?? 0), incompleteCostCount, pendingMeasurementCount };
 }
 
 export function filterReportPeriod(data: ReportsData, month: string) {

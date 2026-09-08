@@ -26,12 +26,13 @@ export default function DashboardView({ state, onNavigate }: { state: ReportStat
     <div className="dashboard-grid">
       <section className="panel usage-panel">
         <div className="panel-head"><div><h2>Penggunaan bulan ini</h2><p>{monthLabel} · sesi selesai</p></div><button className="text-button" onClick={() => onNavigate("reports")}>Lihat laporan <ArrowUpRight size={15} /></button></div>
-        <div className="usage-summary"><div><span>Total penggunaan</span><strong>{formatKg(totals.grams)}</strong><small>{formatNumber(totals.grams)} gram tercatat</small></div><div><span>Estimasi biaya penggunaan</span><strong>{formatMoney(totals.estimatedCost)}</strong><small>{totals.count} sesi selesai</small></div></div>
+        <div className="usage-summary"><div><span>Total penggunaan</span><strong>{formatKg(totals.grams)}</strong><small>{formatNumber(totals.grams)} gram tercatat{totals.pendingMeasurementCount ? ` · ${totals.pendingMeasurementCount} sesi masih sementara` : ""}</small></div><div><span>Estimasi biaya penggunaan</span><strong>{formatMoney(totals.estimatedCost)}</strong><small>{totals.count} sesi selesai</small></div></div>
         <div className="usage-bars">{[{ label: "Kelas", color: "#b9ef3a" }, { label: "Trial Print", color: "#6979f8" }, { label: "Sample", color: "#f4a261" }].map((category) => {
           const group = usageTotals(period.usages.filter((item) => item.category === category.label));
           return <div className="usage-row" key={category.label}><div className="usage-label"><i style={{ background: category.color }} /><span>{category.label}</span><strong>{formatKg(group.grams)}</strong></div><div className="bar-track"><i style={{ width: `${totals.grams ? group.grams / totals.grams * 100 : 0}%`, background: category.color }} /></div><small>{formatMoney(group.estimatedCost)}</small></div>;
         })}</div>
         {!totals.count ? <p className="report-note">Belum ada penggunaan selesai pada bulan ini.</p> : null}
+        {totals.pendingMeasurementCount ? <div className="warning-strip"><AlertTriangle size={17} /><span><strong>{totals.pendingMeasurementCount} sesi</strong> memakai gram cadangan sampai penimbangan disahkan.</span></div> : null}
         <p className="report-note">Biaya dihitung dari harga unit dan berat awal penerimaan.{totals.incompleteCostCount ? ` Data biaya untuk ${totals.incompleteCostCount} sesi belum lengkap.` : ""}</p>
       </section>
       <section className="panel attention-panel">

@@ -128,7 +128,7 @@ export async function ensureReceiptSchema() {
           color text not null,
           packaging_type text not null check (packaging_type in ('WITH_SPOOL', 'REFILL')),
           remaining_grams numeric(12,2) not null check (remaining_grams >= 0),
-          status text not null check (status in ('AVAILABLE', 'IN_USE', 'LOW_STOCK', 'EMPTY', 'DAMAGED', 'INACTIVE')),
+          status text not null check (status in ('AVAILABLE', 'IN_USE', 'NEEDS_WEIGHING', 'LOW_STOCK', 'EMPTY', 'DAMAGED', 'INACTIVE')),
           unit_cost numeric(16,2) not null check (unit_cost >= 0),
           supplier text not null,
           created_at timestamptz not null default now(),

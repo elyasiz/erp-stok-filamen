@@ -9,6 +9,7 @@ function correctionError(error: unknown) {
   if (message === "DATABASE_NOT_CONFIGURED") return Response.json({ message: "Database belum terhubung." }, { status: 503 });
   if (message === "USAGE_NOT_FOUND") return Response.json({ message: "Sesi penggunaan tidak ditemukan." }, { status: 404 });
   if (message === "CORRECTION_SESSION_NOT_COMPLETED") return Response.json({ message: "Gram masih dapat diubah langsung sebelum sesi difinalisasi." }, { status: 409 });
+  if (message === "CORRECTION_MEASUREMENT_PENDING") return Response.json({ message: "Selesaikan Verifikasi gram terlebih dahulu sebelum membuat koreksi." }, { status: 409 });
   if (message === "CORRECTION_NO_CHANGE") return Response.json({ message: "Tidak ada gram yang berubah." }, { status: 400 });
   if (message === "CORRECTION_ITEMS_MISMATCH") return Response.json({ message: "Data unit berubah atau gram melebihi saldo awal. Muat ulang detail sesi." }, { status: 409 });
   if (message === "CORRECTION_REQUEST_CONFLICT" || message.includes("usage_corrections_one_pending_idx")) return Response.json({ message: "Sesi ini sudah memiliki koreksi yang menunggu peninjauan." }, { status: 409 });

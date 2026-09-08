@@ -30,6 +30,7 @@ import type { ReportState } from "./report-state";
 import { useAuth } from "./auth-provider";
 import { AccountsView, ActivityView } from "./accounts-view";
 import UsageCorrectionsView from "./usage-corrections-view";
+import UsageWeighingsView from "./usage-weighings-view";
 import { isStaff } from "@/lib/account-types";
 
 export type ViewId =
@@ -44,6 +45,7 @@ export type ViewId =
   | "users"
   | "activity"
   | "corrections"
+  | "weighings"
   | "my-usage"
   | "profile"
   | "settings";
@@ -68,7 +70,7 @@ function Toast({ text, onClose }: { text: string; onClose: () => void }) {
   return <div className="app-toast" role="status"><CheckCircle2 size={18} /><span>{text}</span><button onClick={onClose} aria-label="Tutup pemberitahuan"><X size={16} /></button></div>;
 }
 
-type InventoryStatusCode = "AVAILABLE" | "IN_USE" | "LOW_STOCK" | "EMPTY" | "DAMAGED" | "INACTIVE";
+type InventoryStatusCode = "AVAILABLE" | "IN_USE" | "NEEDS_WEIGHING" | "LOW_STOCK" | "EMPTY" | "DAMAGED" | "INACTIVE";
 type PackagingCode = "WITH_SPOOL" | "REFILL";
 
 type InventoryItem = {
@@ -104,11 +106,14 @@ type UsageSessionSummary = {
 const inventoryStatusLabels: Record<InventoryStatusCode, string> = {
   AVAILABLE: "Tersedia",
   IN_USE: "Digunakan",
+  NEEDS_WEIGHING: "Perlu Ditimbang",
   LOW_STOCK: "Hampir Habis",
   EMPTY: "Habis",
   DAMAGED: "Rusak",
   INACTIVE: "Nonaktif",
 };
+const editableInventoryStatuses: InventoryStatusCode[] = ["AVAILABLE", "LOW_STOCK", "EMPTY", "DAMAGED", "INACTIVE"];
+const inventoryStatusLocked = (status: InventoryStatusCode) => status === "IN_USE" || status === "NEEDS_WEIGHING";
 
 const emptyInventoryForm: InventoryFormData = {
   code: "",
@@ -161,7 +166,7 @@ function InventoryForm({ value, saving, error, onChange, onCancel, onSubmit }: {
         <label><span>Warna *</span><input required maxLength={60} value={value.color} onChange={(event) => onChange({ ...value, color: event.target.value })} placeholder="Matte Black" /></label>
         <label><span>Kemasan *</span><select value={value.packagingType} onChange={(event) => onChange({ ...value, packagingType: event.target.value as PackagingCode })}><option value="WITH_SPOOL">With Spool</option><option value="REFILL">Refill</option></select></label>
         <label><span>Sisa gram *</span><input required type="number" min="0" max="100000" step="0.01" value={value.remainingGrams} onChange={(event) => onChange({ ...value, remainingGrams: Number(event.target.value) })} /></label>
-        <label><span>Status *</span><select value={value.status} onChange={(event) => onChange({ ...value, status: event.target.value as InventoryStatusCode })}>{Object.entries(inventoryStatusLabels).map(([status, label]) => <option value={status} key={status}>{label}</option>)}</select></label>
+        <label><span>Status *</span><select value={value.status} onChange={(event) => onChange({ ...value, status: event.target.value as InventoryStatusCode })}>{editableInventoryStatuses.map((status) => <option value={status} key={status}>{inventoryStatusLabels[status]}</option>)}</select></label>
         <label><span>Harga unit *</span><input required type="number" min="0" step="1" value={value.unitCost} onChange={(event) => onChange({ ...value, unitCost: Number(event.target.value) })} /></label>
         {value.reason !== undefined ? <label className="full-field"><span>Alasan perubahan *</span><input required minLength={3} maxLength={500} value={value.reason} onChange={event => onChange({ ...value, reason: event.target.value })} placeholder="Contoh: koreksi hasil penimbangan" /></label> : null}<label className="full-field"><span>Supplier *</span><input required maxLength={120} value={value.supplier} onChange={(event) => onChange({ ...value, supplier: event.target.value })} placeholder="Nama supplier" /></label>
       </div>
@@ -278,6 +283,7 @@ function InventoryView() {
   const closeDialog = () => { setMode(null); setSelected(null); setFormError(""); };
   const openCreate = () => { setForm(emptyInventoryForm); setSelected(null); setFormError(""); setMode("create"); };
   const openEdit = (item: InventoryItem) => {
+    if (inventoryStatusLocked(item.status)) return;
     setSelected(item);
     setForm({ code: item.code, product: item.product, material: item.material, color: item.color, packagingType: item.packagingType, remainingGrams: item.remainingGrams, status: item.status, unitCost: item.unitCost, supplier: item.supplier, reason: "" });
     setFormError("");
@@ -366,7 +372,7 @@ function InventoryView() {
                 <td><strong className="cell-main">{item.material}</strong><small className="cell-sub">{item.packagingType === "WITH_SPOOL" ? "With Spool" : "Refill"}</small></td>
                 <td><div className="weight-cell"><strong>{item.remainingGrams.toLocaleString("id-ID")} g</strong><div><i style={{ width: `${Math.min(100, item.remainingGrams / 10)}%` }} /></div></div></td>
                 <td><Status>{inventoryStatusLabels[item.status]}</Status></td>{canManage ? <td>{rupiah.format(item.unitCost)}</td> : null}<td>{item.supplier}</td>
-                <td><div className="row-actions"><button className="table-action" onClick={() => { setSelected(item); setMode("view"); }} aria-label={`Lihat ${item.code}`} title="Lihat"><Eye size={15} /></button><button className="table-action" onClick={() => openLabel(item)} aria-label={`Cetak label ${item.code}`} title="Cetak label"><Printer size={15} /></button>{canManage ? <button className="table-action" onClick={() => openEdit(item)} aria-label={`Ubah ${item.code}`} title="Ubah"><Pencil size={15} /></button> : null}{canManage ? <button className="table-action danger" onClick={() => { setSelected(item); setFormError(""); setMode("delete"); }} aria-label={`Hapus ${item.code}`} title="Hapus"><Trash2 size={15} /></button> : null}</div></td>
+                <td><div className="row-actions"><button className="table-action" onClick={() => { setSelected(item); setMode("view"); }} aria-label={`Lihat ${item.code}`} title="Lihat"><Eye size={15} /></button><button className="table-action" onClick={() => openLabel(item)} aria-label={`Cetak label ${item.code}`} title="Cetak label"><Printer size={15} /></button>{canManage && !inventoryStatusLocked(item.status) ? <button className="table-action" onClick={() => openEdit(item)} aria-label={`Ubah ${item.code}`} title="Ubah"><Pencil size={15} /></button> : null}{canManage && !inventoryStatusLocked(item.status) ? <button className="table-action danger" onClick={() => { setSelected(item); setFormError(""); setMode("delete"); }} aria-label={`Hapus ${item.code}`} title="Hapus"><Trash2 size={15} /></button> : null}</div></td>
               </tr>)}
             </tbody>
           </table>
@@ -375,7 +381,7 @@ function InventoryView() {
       </section>
 
       {mode === "create" || mode === "edit" ? <InventoryDialog eyebrow={mode === "create" ? "UNIT BARU" : "PERBARUI UNIT"} title={mode === "create" ? "Tambah stok filamen" : `Ubah ${selected?.code ?? "filamen"}`} onClose={closeDialog}><InventoryForm value={form} saving={saving} error={formError} onChange={setForm} onCancel={closeDialog} onSubmit={() => void saveItem()} /></InventoryDialog> : null}
-      {mode === "view" && selected ? <InventoryDialog eyebrow="DETAIL UNIT" title={selected.code} onClose={closeDialog}><div className="inventory-detail"><div className="detail-hero"><span className="product-token"><Barcode size={22} /></span><div><strong>{selected.product}</strong><small>{selected.material} · {selected.color}</small></div><Status>{inventoryStatusLabels[selected.status]}</Status></div><dl><div><dt>Kemasan</dt><dd>{selected.packagingType === "WITH_SPOOL" ? "With Spool" : "Refill"}</dd></div><div><dt>Sisa stok</dt><dd>{selected.remainingGrams.toLocaleString("id-ID")} gram</dd></div>{canManage ? <div><dt>Harga unit</dt><dd>{rupiah.format(selected.unitCost)}</dd></div> : null}<div><dt>Supplier</dt><dd>{selected.supplier}</dd></div><div><dt>Terakhir diubah</dt><dd>{new Date(selected.updatedAt).toLocaleString("id-ID")}</dd></div></dl></div><div className="dialog-actions">{canManage ? <button className="button secondary danger-button" onClick={() => setMode("delete")}><Trash2 size={16} /> Hapus</button> : null}<button className="button secondary" onClick={() => openLabel(selected)}><Printer size={16} /> Cetak label</button>{canManage ? <button className="button primary" onClick={() => openEdit(selected)}><Pencil size={16} /> Ubah data</button> : null}</div></InventoryDialog> : null}
+      {mode === "view" && selected ? <InventoryDialog eyebrow="DETAIL UNIT" title={selected.code} onClose={closeDialog}><div className="inventory-detail"><div className="detail-hero"><span className="product-token"><Barcode size={22} /></span><div><strong>{selected.product}</strong><small>{selected.material} · {selected.color}</small></div><Status>{inventoryStatusLabels[selected.status]}</Status></div><dl><div><dt>Kemasan</dt><dd>{selected.packagingType === "WITH_SPOOL" ? "With Spool" : "Refill"}</dd></div><div><dt>Sisa stok</dt><dd>{selected.remainingGrams.toLocaleString("id-ID")} gram</dd></div>{canManage ? <div><dt>Harga unit</dt><dd>{rupiah.format(selected.unitCost)}</dd></div> : null}<div><dt>Supplier</dt><dd>{selected.supplier}</dd></div><div><dt>Terakhir diubah</dt><dd>{new Date(selected.updatedAt).toLocaleString("id-ID")}</dd></div></dl></div>{selected.status === "NEEDS_WEIGHING" ? <div className="warning-strip"><AlertCircle size={18} /><span>Saldo ini masih sementara. Gunakan menu <strong>Verifikasi gram</strong> untuk memasukkan hasil timbang.</span></div> : null}<div className="dialog-actions">{canManage && !inventoryStatusLocked(selected.status) ? <button className="button secondary danger-button" onClick={() => setMode("delete")}><Trash2 size={16} /> Hapus</button> : null}<button className="button secondary" onClick={() => openLabel(selected)}><Printer size={16} /> Cetak label</button>{canManage && !inventoryStatusLocked(selected.status) ? <button className="button primary" onClick={() => openEdit(selected)}><Pencil size={16} /> Ubah data</button> : null}</div></InventoryDialog> : null}
       {mode === "label" && selected ? <InventoryDialog eyebrow="LABEL SIAP CETAK" title={selected.code} onClose={closeDialog}><div className="label-ready-note"><CheckCircle2 size={18} /><div><strong>Barcode Code 128 sudah dibuat.</strong><span>Gunakan kertas label 100 × 50 mm, lalu pilih skala 100% pada pengaturan printer.</span></div></div><PrintableBarcodeLabel item={selected} /><div className="dialog-actions"><button className="button secondary" onClick={closeDialog}>Selesai</button><button className="button primary" onClick={() => window.print()}><Printer size={16} /> Cetak label</button></div></InventoryDialog> : null}
       {mode === "delete" && selected ? <InventoryDialog eyebrow="KONFIRMASI" title={`Hapus ${selected.code}?`} onClose={closeDialog}><label className="stack-field"><span>Alasan penghapusan *</span><input required minLength={3} maxLength={500} value={form.reason ?? ""} onChange={event => setForm({ ...form, reason: event.target.value })} placeholder="Jelaskan alasan penghapusan" /></label><div className="delete-copy"><span><Trash2 size={22} /></span><div><strong>Data akan dihapus permanen.</strong><p>Unit {selected.product} tidak akan tampil lagi di stok filamen.</p></div></div>{formError ? <div className="inventory-form-error" role="alert"><AlertCircle size={16} />{formError}</div> : null}<div className="dialog-actions"><button className="button secondary" onClick={closeDialog} disabled={saving}>Batal</button><button className="button danger-button solid" onClick={() => void deleteItem()} disabled={saving}>{saving ? <><LoaderCircle className="spin" size={16} /> Menghapus...</> : <><Trash2 size={16} /> Hapus permanen</>}</button></div></InventoryDialog> : null}
       {toast ? <Toast text={toast} onClose={() => setToast("")} /> : null}
@@ -568,5 +574,6 @@ export function ModuleView({ view, onNavigate, usageSessionId, reports }: { repo
   if (view === "users") return <AccountsView />;
   if (view === "activity") return <ActivityView />;
   if (view === "corrections") return <UsageCorrectionsView />;
+  if (view === "weighings") return <UsageWeighingsView />;
   return <SettingsView />;
 }

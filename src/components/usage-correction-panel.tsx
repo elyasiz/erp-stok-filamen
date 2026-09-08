@@ -9,6 +9,7 @@ export type CorrectionSession = {
   id: string;
   number: string;
   status: string;
+  needsWeighing?: boolean;
   items: Array<{
     inventoryItemId: string;
     code: string;
@@ -16,6 +17,7 @@ export type CorrectionSession = {
     color: string | null;
     startingGrams: number;
     usedGrams: number | null;
+    measurementStatus?: "MEASURED" | "PENDING";
   }>;
 };
 
@@ -60,7 +62,8 @@ export default function UsageCorrectionPanel({ session, onChanged }: { session: 
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
   const pending = corrections.find((item) => item.status === "PENDING");
-  const editableItems = session.items.filter((item) => item.usedGrams !== null);
+  const awaitingWeighing = Boolean(session.needsWeighing || session.items.some((item) => item.measurementStatus === "PENDING"));
+  const editableItems = session.items.filter((item) => item.usedGrams !== null && item.measurementStatus !== "PENDING");
   const allValid = editableItems.length > 0 && editableItems.every((item) => validAmount(amounts[item.inventoryItemId] ?? "", item.startingGrams));
   const changed = allValid && editableItems.some((item) => Number(amounts[item.inventoryItemId]) !== item.usedGrams);
   const stockDelta = allValid ? editableItems.reduce((total, item) => total + (item.usedGrams ?? 0) - Number(amounts[item.inventoryItemId]), 0) : 0;
@@ -87,6 +90,10 @@ export default function UsageCorrectionPanel({ session, onChanged }: { session: 
   };
 
   if (session.status !== "COMPLETED") return null;
+  if (awaitingWeighing) return <section className="usage-correction-panel" aria-labelledby={`correction-${session.id}`}>
+    <div className="section-title"><div><h3 id={`correction-${session.id}`}>Koreksi gram penggunaan</h3><p>Koreksi tersedia setelah hasil timbang disahkan.</p></div><History size={20} /></div>
+    <div className="warning-strip"><AlertCircle size={18} /><span>Gram pada sesi ini masih berupa cadangan. Admin/Owner perlu menyelesaikan <strong>Verifikasi gram</strong> terlebih dahulu.</span></div>
+  </section>;
   return <section className="usage-correction-panel" aria-labelledby={`correction-${session.id}`}>
     <div className="section-title"><div><h3 id={`correction-${session.id}`}>Koreksi gram penggunaan</h3><p>Angka lama tetap tersimpan dalam riwayat audit.</p></div><History size={20} /></div>
     {loading ? <p className="correction-loading"><LoaderCircle className="spin" size={17} /> Memuat riwayat koreksi...</p> : null}

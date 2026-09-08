@@ -22,8 +22,8 @@ export default function UsageHistoryDetail({ session, onClose, onChanged }: { se
 
   const downloadDetail = () => {
     const rows: Array<Array<string | number | null>> = [
-      ["Referensi", "Nama pengambil", "Jenis penggunaan", "Status sesi", "Mulai (WIB)", "Selesai (WIB)", "Hasil", "Catatan", "Kode unit", "Produk", "Material", "Warna", "Kemasan", "Supplier", "Gram awal sesi", "Gram digunakan", "Sisa setelah sesi (g)", "Estimasi biaya (Rp)"],
-      ...session.items.map((item) => [session.number, session.userName, session.category, sessionStatusLabels[session.status] ?? session.status, formatDate(session.startedAt), session.completedAt ? formatDate(session.completedAt) : null, session.result ? resultLabels[session.result] : null, session.notes, item.code, item.product, item.material, item.color, packaging(item.packagingType), item.supplier, item.startingGrams, item.usedGrams, item.returnedGrams, item.estimatedCost]),
+      ["Referensi", "Nama pengambil", "Jenis penggunaan", "Status sesi", "Mulai (WIB)", "Selesai (WIB)", "Hasil", "Catatan", "Kode unit", "Produk", "Material", "Warna", "Kemasan", "Supplier", "Gram awal sesi", "Gram digunakan", "Sisa setelah sesi (g)", "Status gram", "Cadangan awal (g)", "Diverifikasi oleh", "Waktu verifikasi", "Catatan timbang", "Estimasi biaya (Rp)"],
+      ...session.items.map((item) => [session.number, session.userName, session.category, sessionStatusLabels[session.status] ?? session.status, formatDate(session.startedAt), session.completedAt ? formatDate(session.completedAt) : null, session.result ? resultLabels[session.result] : null, session.notes, item.code, item.product, item.material, item.color, packaging(item.packagingType), item.supplier, item.startingGrams, item.usedGrams, item.returnedGrams, item.measurementStatus === "PENDING" ? "Sementara, perlu ditimbang" : "Aktual", item.provisionalUsedGrams, item.weighedByName, item.weighedAt ? formatDate(item.weighedAt) : null, item.weighingNote, item.estimatedCost]),
     ];
     const url = URL.createObjectURL(new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a");
@@ -63,9 +63,11 @@ export default function UsageHistoryDetail({ session, onClose, onChanged }: { se
 
         <div className="usage-history-totals">
           <div><span>Total gram awal sesi</span><strong>{grams(session.totalStartingGrams)}</strong></div>
-          <div><span>Total gram digunakan</span><strong>{grams(session.totalUsedGrams)}</strong></div>
-          <div><span>Total sisa setelah sesi</span><strong>{grams(session.totalReturnedGrams)}</strong></div>
+          <div><span>{session.needsWeighing ? "Cadangan penggunaan" : "Total gram digunakan"}</span><strong>{grams(session.totalUsedGrams)}</strong></div>
+          <div><span>{session.needsWeighing ? "Saldo sementara" : "Total sisa setelah sesi"}</span><strong>{grams(session.totalReturnedGrams)}</strong></div>
         </div>
+
+        {session.needsWeighing ? <div className="warning-strip"><span>Angka gram masih sementara. Unit dikunci sampai Admin/Owner memasukkan hasil timbang bersih melalui menu <strong>Verifikasi gram</strong>.</span></div> : null}
 
         <section aria-labelledby="usage-history-items-title">
           <h3 id="usage-history-items-title">Filamen yang digunakan</h3>
@@ -77,7 +79,7 @@ export default function UsageHistoryDetail({ session, onClose, onChanged }: { se
                   <td><strong>{item.product ?? "Produk tidak tercatat"}</strong><small>{item.material ?? "—"} · {item.color ?? "—"}</small></td>
                   <td><code>{item.code}</code></td>
                   <td>{packaging(item.packagingType)}<small>{item.supplier ?? "Supplier tidak tercatat"}</small></td>
-                  <td>{grams(item.startingGrams)}</td><td>{grams(item.usedGrams)}</td><td>{grams(item.returnedGrams)}</td>
+                  <td>{grams(item.startingGrams)}</td><td>{item.measurementStatus === "PENDING" ? `Cadangan ${grams(item.usedGrams)}` : grams(item.usedGrams)}</td><td>{item.measurementStatus === "PENDING" ? `Sementara ${grams(item.returnedGrams)}` : grams(item.returnedGrams)}</td>
                   <td>{item.usedGrams === null ? "Belum tercatat" : formatMoney(item.estimatedCost)}</td>
                 </tr>
               ))}</tbody>

@@ -367,6 +367,25 @@ button { color: inherit; }
 .summary-note span { display: grid; gap: 2px; }
 .summary-note.safe { border-color: #e3e6f4; background: #f5f6fd; color: #69718a; }
 .summary-note.safe svg { color: #6675da; }
+.summary-note.weighing, .warning-strip { border-color: #f1d3a9; background: #fff8ed; color: #8a5a22; }
+.summary-note.weighing svg, .warning-strip svg { flex: 0 0 auto; color: #c37a22; }
+.warning-strip { display: flex; align-items: center; gap: 9px; margin: 14px 0; border: 1px solid #f1d3a9; border-radius: 11px; font-size: .875rem; line-height: 1.45; padding: 11px; }
+.warning-strip p { margin: 0; }
+.measurement-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 18px 0 0; border: 0; padding: 0; }
+.measurement-choice legend { grid-column: 1 / -1; margin-bottom: 7px; color: var(--ink); font-size: .875rem; font-weight: 800; }
+.measurement-choice label { display: flex; align-items: flex-start; gap: 10px; min-width: 0; border: 1px solid var(--line); border-radius: 13px; background: white; cursor: pointer; padding: 12px; }
+.measurement-choice label:has(input:checked) { border-color: #adc95c; background: #f7fbe9; box-shadow: 0 0 0 2px rgb(185 239 58 / 18%); }
+.measurement-choice input { width: 17px; height: 17px; flex: 0 0 auto; margin-top: 2px; accent-color: #77961d; }
+.measurement-choice span { display: grid; gap: 3px; }
+.measurement-choice strong { color: var(--ink); font-size: .875rem; }
+.measurement-choice small { color: var(--muted); font-size: .75rem; line-height: 1.4; }
+.weighing-list { display: grid; gap: 16px; margin-top: 16px; }
+.weighing-card { overflow: hidden; border: 1px solid var(--line); border-radius: 17px; background: white; box-shadow: var(--shadow); padding: 18px; }
+.weighing-card .correction-card-head { margin-bottom: 8px; }
+.weighing-card .data-table { min-width: 980px; }
+.weighing-card .data-table input { width: 140px; border: 1px solid #dfe3dc; border-radius: 9px; background: white; padding: 9px 10px; }
+.weighing-card .stack-field { margin-top: 14px; }
+.weighing-instruction { margin: 10px 0 14px; color: #66707a; font-size: .875rem; line-height: 1.5; }
 .button.full { width: 100%; margin-top: 8px; }
 .button:disabled { cursor: default; opacity: .75; transform: none; }
 .receipt-table { min-width: 980px; }
@@ -640,6 +659,7 @@ button { color: inherit; }
   .return-item label { grid-column: 2; }
   .receipt-line-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .receipt-detail-summary, .receipt-detail-cost { grid-template-columns: 1fr 1fr; }
+  .weighing-card { padding: 14px; }
 }
 
 @media (max-width: 520px) {
@@ -688,6 +708,8 @@ button { color: inherit; }
   .camera-viewport, .camera-viewport video { min-height: 250px; height: 250px; }
   .camera-manual { grid-template-columns: 1fr; }
   .camera-manual .button { justify-content: center; }
+  .measurement-choice { grid-template-columns: 1fr; }
+  .weighing-card .dialog-actions .button { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

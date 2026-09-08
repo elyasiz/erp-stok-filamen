@@ -144,6 +144,10 @@ test("validation rejects empty, negative, nonfinite, imprecise and duplicate inp
   assert.throws(() => usage.parseUsageCompletionInput({ result: "SUCCESS", items: [] }), /Seluruh unit/);
   assert.throws(() => usage.parseUsageCompletionInput({ result: "SUCCESS", items: [{ ...item, barcode: "" }] }), /Scan ulang/);
   assert.throws(() => usage.parseUsageCompletionInput({ result: "SUCCESS", notes: "x".repeat(1001), items: [item] }), /Catatan/);
+  assert.throws(() => usage.parseUsageCompletionInput({ result: "SUCCESS", measurementMode: "UNKNOWN", items: [item] }), /hanya dapat dipilih untuk hasil gagal/);
+  assert.throws(() => usage.parseUsageWeighingInput({ note: "", items: [{ inventoryItemId: item.inventoryItemId, remainingGrams: 10 }] }), /catatan penimbangan/);
+  assert.throws(() => usage.parseUsageWeighingInput({ note: "Ditimbang", items: [{ inventoryItemId: item.inventoryItemId, remainingGrams: 0.001 }] }), /Sisa gram hasil timbang/);
+  assert.throws(() => usage.parseUsageWeighingInput({ note: "Ditimbang", items: [{ inventoryItemId: item.inventoryItemId, remainingGrams: 10 }, { inventoryItemId: item.inventoryItemId, remainingGrams: 9 }] }), /dua kali/);
 });
 
 test("explicit zero usage preserves balances and uses the exact low-stock boundary", async () => {
@@ -204,6 +208,45 @@ test("finished units can be used in a new session with their new starting balanc
   assert.equal(second.items[0].startingGrams, 800);
   assert.notEqual(second.id, first.id);
   assert.equal((await usage.getUsageSession(first.id)).items[0].returnedGrams, 800);
+});
+
+test("failed print with unknown grams reserves stock until staff verifies the weighed balance", async () => {
+  const coach = { id: randomUUID(), name: "Coach Test", role: "COACH" };
+  const admin = { id: randomUUID(), name: "Admin Test", role: "ADMIN" };
+  const items = await stock([1000]);
+  const session = await usage.createUsageSession({ ...usage.parseUsageInput({ userName: coach.name, usageType: "NON_CLASS", nonClassType: "TRIAL_PRINT", inventoryItemIds: [items[0].id] }), borrowerUserId: coach.id }, coach);
+  const provisional = completion(items, [20], { result: "FAILED", measurementMode: "UNKNOWN", notes: "Print berhenti di tengah" });
+  const closed = await usage.completeUsageSession(session.id, provisional, coach);
+
+  assert.equal(closed.status, "COMPLETED");
+  assert.equal(closed.needsWeighing, true);
+  assert.equal(closed.totalUsedGrams, 20);
+  assert.equal(closed.items[0].measurementStatus, "PENDING");
+  assert.equal(closed.items[0].provisionalUsedGrams, 20);
+  assert.deepEqual(await balances(), [{ code: items[0].code, grams: "980.00", status: "NEEDS_WEIGHING" }]);
+  await assert.rejects(start(items), /UNIT_NOT_AVAILABLE/);
+  await assert.rejects(usage.createUsageCorrection(session.id, usage.parseUsageCorrectionInput({ reason: "Coba koreksi", items: [{ inventoryItemId: items[0].id, usedGrams: 10 }] }), coach), /CORRECTION_MEASUREMENT_PENDING/);
+
+  const tasks = await usage.listUsageWeighings(admin);
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].items[0].provisionalUsedGrams, 20);
+  assert.equal(tasks[0].items[0].reservedRemainingGrams, 980);
+  const verified = await usage.verifyUsageWeighing(session.id, usage.parseUsageWeighingInput({ note: "Ditimbang setelah spool dingin", items: [{ inventoryItemId: items[0].id, remainingGrams: 992 }] }), admin);
+  assert.equal(verified.needsWeighing, false);
+  assert.equal(verified.totalUsedGrams, 8);
+  assert.equal(verified.totalReturnedGrams, 992);
+  assert.equal(verified.items[0].measurementStatus, "MEASURED");
+  assert.equal(verified.items[0].provisionalUsedGrams, 20);
+  assert.equal(verified.items[0].weighedByName, admin.name);
+  assert.equal(verified.items[0].weighingNote, "Ditimbang setelah spool dingin");
+  assert.deepEqual(await balances(), [{ code: items[0].code, grams: "992.00", status: "AVAILABLE" }]);
+  assert.equal((await usage.listUsageWeighings(admin)).length, 0);
+  const reusable = await start(items);
+  assert.equal(reusable.items[0].startingGrams, 992);
+  await assert.rejects(usage.verifyUsageWeighing(session.id, usage.parseUsageWeighingInput({ note: "Ulang", items: [{ inventoryItemId: items[0].id, remainingGrams: 990 }] }), admin), /WEIGHING_NOT_FOUND/);
+  const events = await db.query("SELECT action, actor_name FROM audit_events WHERE entity_id = $1 ORDER BY created_at", [session.id]);
+  assert.ok(events.rows.some((event) => event.action === "USAGE_COMPLETED_UNWEIGHED" && event.actor_name === coach.name));
+  assert.ok(events.rows.some((event) => event.action === "USAGE_WEIGHING_VERIFIED" && event.actor_name === admin.name));
 });
 
 test("coach correction waits for staff approval and applies only the gram difference", async () => {

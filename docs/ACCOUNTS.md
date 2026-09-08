@@ -41,6 +41,16 @@ Peran dan status Owner dilindungi agar akses pengelolaan tetap tersedia. Owner d
 - Persetujuan menerapkan selisih gram ke saldo terkini dan memperbarui angka penggunaan untuk laporan. Angka sebelum/sesudah, alasan, pemohon, peninjau, dan waktu tetap tersimpan.
 - Koreksi tidak diterapkan jika unit sedang berada dalam sesi aktif, saldo tidak mencukupi, atau catatan penggunaan sudah berubah. Permintaan tetap menunggu sampai konflik diselesaikan atau ditolak.
 
+## Print gagal dan gram belum diketahui
+
+1. Saat menyelesaikan sesi, pilih hasil **Gagal**, lalu pilih **Belum diketahui** pada bagian gram setelah gagal.
+2. Masukkan estimasi maksimum pemakaian dari slicer untuk setiap unit. Nilai ini menjadi cadangan sementara agar stok tidak terlihat lebih banyak dari kondisi lapangan.
+3. Setelah difinalisasi, unit berstatus **Perlu ditimbang** dan tidak dapat diambil, diedit, atau dihapus sampai hasil timbang disahkan.
+4. Owner/Admin membuka **Verifikasi gram**, menimbang spool, mengurangi berat spool kosong bila perlu, lalu memasukkan sisa filamen bersih dan catatan penimbangan.
+5. Sistem menghitung pemakaian aktual dari gram awal dikurangi sisa hasil timbang, mengganti saldo sementara, membuka kembali unit sesuai status stoknya, dan menyimpan pelaku serta waktu verifikasi dalam audit.
+
+Laporan, riwayat, dan penggunaan pribadi memberi label **Cadangan** atau **Sementara** selama verifikasi belum selesai. Koreksi penggunaan baru tersedia setelah hasil timbang disahkan.
+
 ## Penyimpanan dan pembatasan
 
 - Kata sandi di-hash dengan scrypt (N=65536, r=8, p=2), salt acak 16 byte, hasil 64 byte. Nilai asli tidak disimpan, dikirim balik melalui API, atau ditulis ke audit.
